@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# NestJS
+backend/node_modules/
+backend/dist/
+backend/coverage/
+backend/*.log
+backend/npm-debug.log*
+
+# Swift Package Manager
+ios/.build/
+ios/.swiftpm/
+
+# Xcode user-specific files
+ios/DerivedData/
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+
+# IDE
+.vscode/
+.idea/
