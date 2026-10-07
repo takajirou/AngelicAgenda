@@ -10,6 +10,7 @@
 backend/node_modules/
 backend/dist/
 backend/coverage/
+backend/*.tsbuildinfo
 backend/*.log
 backend/npm-debug.log*
 

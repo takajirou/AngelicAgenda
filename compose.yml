@@ -6,10 +6,15 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgres://app:password@database:5432/app
+      DATABASE_URL: postgres://app:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@database:5432/app
+      ANGELIC_SETUP_TOKEN: ${ANGELIC_SETUP_TOKEN:?ANGELIC_SETUP_TOKEN is required}
+      ANGELIC_ANGEL_BINARY_PATH: /usr/local/bin/angelic-angel
+      ANGELIC_ANGEL_CONFIG_PATH: /var/lib/angelic-angel/angelic-angel.toml
+      WEBHOOK_ENDPOINT: ${WEBHOOK_ENDPOINT:?WEBHOOK_ENDPOINT is required}
     volumes:
       - ./backend:/app
       - backend_node_modules:/app/node_modules
+      - angelic_angel_data:/var/lib/angelic-angel
     depends_on:
       database:
         condition: service_healthy
@@ -18,7 +23,7 @@ services:
     image: postgres:17
     environment:
       POSTGRES_USER: app
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: app
     ports:
       - "5432:5432"
@@ -32,4 +37,5 @@ services:
 
 volumes:
   backend_node_modules:
+  angelic_angel_data:
   postgres_data:

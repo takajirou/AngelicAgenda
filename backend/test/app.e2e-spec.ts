@@ -1,18 +1,34 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
+import { AngelicAngelService } from './../src/integrations/angelic-angel/angelic-angel.service.js';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
+  const provision = vi.fn();
+  const setupToken = 's'.repeat(64);
+  const originalSetupToken = process.env.ANGELIC_SETUP_TOKEN;
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(AngelicAngelService)
+      .useValue({ provision })
+      .compile();
 
     app = moduleFixture.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    process.env.ANGELIC_SETUP_TOKEN = setupToken;
+    provision.mockReset();
     await app.init();
   });
 
@@ -23,7 +39,41 @@ describe('AppController (e2e)', () => {
       .expect('Hello World!');
   });
 
+  it('/integrations/angelic-angel/session rejects a missing setup token', () => {
+    return request(app.getHttpServer())
+      .post('/integrations/angelic-angel/session')
+      .send({ authToken: 'a'.repeat(32), ct0: 'b'.repeat(32) })
+      .expect(401);
+  });
+
+  it('/integrations/angelic-angel/session validates cookie input', () => {
+    return request(app.getHttpServer())
+      .post('/integrations/angelic-angel/session')
+      .set('Authorization', `Bearer ${setupToken}`)
+      .send({ authToken: 'short', ct0: 'b'.repeat(32) })
+      .expect(400);
+  });
+
+  it('/integrations/angelic-angel/session provisions a valid session', async () => {
+    await request(app.getHttpServer())
+      .post('/integrations/angelic-angel/session')
+      .set('Authorization', `Bearer ${setupToken}`)
+      .send({ authToken: 'a'.repeat(32), ct0: 'b'.repeat(32) })
+      .expect(200)
+      .expect({ status: 'registered' });
+
+    expect(provision).toHaveBeenCalledWith({
+      authToken: 'a'.repeat(32),
+      ct0: 'b'.repeat(32),
+    });
+  });
+
   afterEach(async () => {
     await app.close();
+    if (originalSetupToken === undefined) {
+      delete process.env.ANGELIC_SETUP_TOKEN;
+    } else {
+      process.env.ANGELIC_SETUP_TOKEN = originalSetupToken;
+    }
   });
 });
