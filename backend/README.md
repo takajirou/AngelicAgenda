@@ -20,6 +20,8 @@ openssl rand -hex 32
 docker compose up --build
 ```
 
+自宅Windows PCからCloudflare Tunnel経由で公開する本番構成は、[`deploy/README.md`](../deploy/README.md)を参照してください。本番ComposeはAPIやDBのポートをホストへ公開せず、シークレットをGit管理外のファイルから読み込みます。
+
 外部公開時は、Caddyやnginxなどのリバースプロキシで有効なTLS証明書を設定し、iOSアプリには`https://`の公開URLを入力してください。NestJSの3000番ポートをそのままインターネットへ公開しないでください。
 
 ## セットアップAPI

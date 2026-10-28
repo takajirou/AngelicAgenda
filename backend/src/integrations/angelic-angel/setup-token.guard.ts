@@ -6,12 +6,28 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import type { Request } from 'express';
+
+function readSetupToken(): string | undefined {
+  const directToken = process.env.ANGELIC_SETUP_TOKEN;
+  const tokenFile = process.env.ANGELIC_SETUP_TOKEN_FILE;
+
+  if (directToken && tokenFile) return undefined;
+  if (directToken) return directToken;
+  if (!tokenFile) return undefined;
+
+  try {
+    return readFileSync(tokenFile, 'utf8').trim();
+  } catch {
+    return undefined;
+  }
+}
 
 @Injectable()
 export class SetupTokenGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const expectedToken = process.env.ANGELIC_SETUP_TOKEN;
+    const expectedToken = readSetupToken();
     if (
       !expectedToken ||
       expectedToken.length < 32 ||
