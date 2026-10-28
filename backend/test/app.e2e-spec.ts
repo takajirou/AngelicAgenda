@@ -1,5 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
@@ -10,6 +13,7 @@ describe('AppController (e2e)', () => {
   const provision = vi.fn();
   const setupToken = 's'.repeat(64);
   const originalSetupToken = process.env.ANGELIC_SETUP_TOKEN;
+  const originalSetupTokenFile = process.env.ANGELIC_SETUP_TOKEN_FILE;
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -37,6 +41,13 @@ describe('AppController (e2e)', () => {
       .get('/')
       .expect(200)
       .expect('Hello World!');
+  });
+
+  it('/health (GET)', () => {
+    return request(app.getHttpServer())
+      .get('/health')
+      .expect(200)
+      .expect({ status: 'ok' });
   });
 
   it('/integrations/angelic-angel/session rejects a missing setup token', () => {
@@ -68,12 +79,35 @@ describe('AppController (e2e)', () => {
     });
   });
 
+  it('/integrations/angelic-angel/session reads a Docker secret file', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'angelic-secret-test-'));
+    const tokenFile = join(directory, 'setup-token');
+    await writeFile(tokenFile, `${setupToken}\n`, { mode: 0o600 });
+    delete process.env.ANGELIC_SETUP_TOKEN;
+    process.env.ANGELIC_SETUP_TOKEN_FILE = tokenFile;
+
+    try {
+      await request(app.getHttpServer())
+        .post('/integrations/angelic-angel/session')
+        .set('Authorization', `Bearer ${setupToken}`)
+        .send({ authToken: 'a'.repeat(32), ct0: 'b'.repeat(32) })
+        .expect(200);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   afterEach(async () => {
     await app.close();
     if (originalSetupToken === undefined) {
       delete process.env.ANGELIC_SETUP_TOKEN;
     } else {
       process.env.ANGELIC_SETUP_TOKEN = originalSetupToken;
+    }
+    if (originalSetupTokenFile === undefined) {
+      delete process.env.ANGELIC_SETUP_TOKEN_FILE;
+    } else {
+      process.env.ANGELIC_SETUP_TOKEN_FILE = originalSetupTokenFile;
     }
   });
 });
