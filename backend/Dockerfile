@@ -41,7 +41,8 @@ COPY --from=backend-builder /app/dist ./dist
 COPY --from=angelic-angel-builder /source/target/release/angelic-angel /usr/local/bin/angelic-angel
 COPY --from=angelic-angel-builder /source/LICENSE /usr/share/doc/angelic-angel/LICENSE
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
+    && chmod 0755 /usr/local/bin/docker-entrypoint.sh
 
 USER node
 
