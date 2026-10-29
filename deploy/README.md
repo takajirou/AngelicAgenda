@@ -114,7 +114,7 @@ Cloudflare Tunnelは外向き接続だけを使用するため、ルーターの
 
 ## 6. iOSアプリから接続する
 
-iOSアプリの外部サーバーURLは`https://agenda-api.takajirou.app/webhooks/x`に固定されています。接続画面では、`deploy\secrets\angelic_setup_token`に生成したセットアップトークンだけを入力します。
+iOSアプリの外部サーバーURLは`https://agenda-api.takajirou.app/webhooks/x`に固定されています。`ios/Config/Secrets.xcconfig.example`を`Secrets.xcconfig`としてコピーし、`deploy\secrets\angelic_setup_token`と同じ値を`ANGELIC_SETUP_TOKEN`へ設定してからアプリをビルドします。接続画面での入力は不要です。
 
 接続が成功すると、Angelic-Angelの設定はDocker volume `angelic_angel_data`へ保存され、コンテナ再作成後も維持されます。
 

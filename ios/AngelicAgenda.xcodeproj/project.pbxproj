@@ -19,6 +19,7 @@
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* AngelicAgenda.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AngelicAgenda.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		000000000000000000000121 /* AngelicAgendaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AngelicAgendaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000000122 /* AngelicAgenda.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/AngelicAgenda.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -64,6 +65,7 @@
 		000000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
+				000000000000000000000122 /* AngelicAgenda.xcconfig */,
 				000000000000000000000010 /* AngelicAgenda */,
 				000000000000000000000011 /* AngelicAgendaTests */,
 				000000000000000000000020 /* Products */,
@@ -329,6 +331,7 @@
 		};
 		000000000000000111000000 /* Debug configuration for PBXNativeTarget "AngelicAgenda" */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 000000000000000000000122 /* AngelicAgenda.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -389,6 +392,7 @@
 		};
 		000000000000000112000000 /* Release configuration for PBXNativeTarget "AngelicAgenda" */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 000000000000000000000122 /* AngelicAgenda.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;

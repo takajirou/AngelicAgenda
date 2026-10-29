@@ -23,6 +23,7 @@ ios/.swiftpm/
 ios/DerivedData/
 ios/**/xcuserdata/
 ios/**/*.xcuserstate
+ios/Config/Secrets.xcconfig
 
 # IDE
 .vscode/

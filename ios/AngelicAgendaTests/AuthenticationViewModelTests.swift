@@ -42,6 +42,17 @@ final class AuthenticationViewModelTests: XCTestCase {
         )
     }
 
+    func testValidateSettingsRejectsMissingBuildSetting() {
+        let subject = AuthenticationViewModel(
+            client: ProvisioningClientSpy(),
+            connectionStore: ConnectionStoreSpy()
+        )
+
+        XCTAssertThrowsError(try subject.validateSettings(setupToken: "")) { error in
+            XCTAssertEqual(error as? AuthenticationError, .missingSetupToken)
+        }
+    }
+
     func testProvisioningFailureDoesNotStoreConnection() async throws {
         let client = ProvisioningClientSpy(
             error: AuthenticationError.serverError(statusCode: 401, message: "認証に失敗しました")

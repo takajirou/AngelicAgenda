@@ -7,12 +7,18 @@ struct XWebSessionCredentials: Equatable, Sendable {
 }
 
 enum AngelicServerConfiguration {
+    private static let setupTokenInfoDictionaryKey = "AngelicSetupToken"
+
     static let baseURL: URL = {
         guard let url = URL(string: "https://agenda-api.takajirou.app/webhooks/x") else {
             preconditionFailure("固定された外部サーバーURLが不正です。")
         }
         return url
     }()
+
+    static var setupToken: String {
+        Bundle.main.object(forInfoDictionaryKey: setupTokenInfoDictionaryKey) as? String ?? ""
+    }
 }
 
 struct AngelicServerSettings: Equatable, Sendable {
@@ -38,7 +44,7 @@ enum AuthenticationError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .missingSetupToken:
-            "サーバーのセットアップトークンを入力してください。"
+            "Build Settingsにセットアップトークンが設定されていません。Secrets.xcconfigを確認してください。"
         case .invalidSetupToken:
             "セットアップトークンは空白を含まない32〜512文字で入力してください。"
         case .missingCookies:

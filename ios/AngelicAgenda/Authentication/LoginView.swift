@@ -3,7 +3,6 @@ import SwiftUI
 struct LoginView: View {
     @EnvironmentObject private var authentication: AuthenticationViewModel
 
-    @State private var setupToken = ""
     @State private var settings: AngelicServerSettings?
     @State private var isShowingXLogin = false
 
@@ -11,14 +10,11 @@ struct LoginView: View {
         NavigationStack {
             Form {
                 Section {
-                    SecureField("セットアップトークン", text: $setupToken)
-                        .textContentType(.password)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    LabeledContent("接続先", value: "agenda-api.takajirou.app")
                 } header: {
                     Text("外部サーバー")
                 } footer: {
-                    Text("接続先は agenda-api.takajirou.app に固定されています。セットアップトークンはサーバーの ANGELIC_SETUP_TOKEN と同じ値です。端末には保存しません。")
+                    Text("接続先とセットアップトークンはBuild Settingsで設定されています。")
                 }
 
                 Section {
@@ -56,7 +52,6 @@ struct LoginView: View {
                 Task {
                     if await authentication.connect(credentials: credentials, settings: settings) {
                         await XLoginWebView.clearXWebsiteData()
-                        setupToken = ""
                         self.settings = nil
                     }
                 }
@@ -66,7 +61,9 @@ struct LoginView: View {
 
     private func startLogin() {
         do {
-            settings = try authentication.validateSettings(setupToken: setupToken)
+            settings = try authentication.validateSettings(
+                setupToken: AngelicServerConfiguration.setupToken
+            )
             authentication.clearError()
             isShowingXLogin = true
         } catch {
