@@ -4,9 +4,8 @@
 
 このアプリは、個人検証用に`WKWebView`でXのログイン画面を開き、ログイン後にXドメインの`auth_token`と`ct0`だけを検出します。取得した値はHTTPSで外部サーバーへ一度だけ送信し、画面表示・ログ出力・端末保存は行いません。接続成功後はXのWebViewデータを削除します。
 
-アプリの接続画面では次を入力します。
+外部サーバーURLは`https://agenda-api.takajirou.app/webhooks/x`に固定されています。アプリの接続画面では次を入力します。
 
-- 外部サーバーURL: TLS証明書が有効な`https://` URL
 - セットアップトークン: サーバーの`ANGELIC_SETUP_TOKEN`と同じランダム値
 
 X Developer ConsoleのClient ID、Client Secret、Callback URIはこの方式では使用しません。

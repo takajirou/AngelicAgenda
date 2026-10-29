@@ -8,7 +8,6 @@ final class AuthenticationViewModelTests: XCTestCase {
         let store = ConnectionStoreSpy()
         let subject = AuthenticationViewModel(client: client, connectionStore: store)
         let settings = try subject.validateSettings(
-            baseURLText: "https://agenda.example.com",
             setupToken: String(repeating: "s", count: 64)
         )
         let credentials = XWebSessionCredentials(
@@ -27,20 +26,20 @@ final class AuthenticationViewModelTests: XCTestCase {
         XCTAssertFalse(subject.isConnecting)
     }
 
-    func testValidateSettingsRejectsPlainHTTPBeforeProvisioning() {
+    func testValidateSettingsUsesFixedServerURL() throws {
         let subject = AuthenticationViewModel(
             client: ProvisioningClientSpy(),
             connectionStore: ConnectionStoreSpy()
         )
 
-        XCTAssertThrowsError(
-            try subject.validateSettings(
-                baseURLText: "http://agenda.example.com",
-                setupToken: String(repeating: "s", count: 64)
-            )
-        ) { error in
-            XCTAssertEqual(error as? AuthenticationError, .insecureServerURL)
-        }
+        let settings = try subject.validateSettings(
+            setupToken: String(repeating: "s", count: 64)
+        )
+
+        XCTAssertEqual(
+            settings.baseURL.absoluteString,
+            "https://agenda-api.takajirou.app/webhooks/x"
+        )
     }
 
     func testProvisioningFailureDoesNotStoreConnection() async throws {
@@ -50,7 +49,6 @@ final class AuthenticationViewModelTests: XCTestCase {
         let store = ConnectionStoreSpy()
         let subject = AuthenticationViewModel(client: client, connectionStore: store)
         let settings = try subject.validateSettings(
-            baseURLText: "https://agenda.example.com",
             setupToken: String(repeating: "w", count: 64)
         )
 
@@ -70,7 +68,7 @@ final class AuthenticationViewModelTests: XCTestCase {
 
     func testSignOutDeletesConnection() {
         let existing = AngelicConnection(
-            serverURL: URL(string: "https://agenda.example.com")!,
+            serverURL: AngelicServerConfiguration.baseURL,
             connectedAt: Date()
         )
         let store = ConnectionStoreSpy(connection: existing)

@@ -6,6 +6,15 @@ struct XWebSessionCredentials: Equatable, Sendable {
     let ct0: String
 }
 
+enum AngelicServerConfiguration {
+    static let baseURL: URL = {
+        guard let url = URL(string: "https://agenda-api.takajirou.app/webhooks/x") else {
+            preconditionFailure("固定された外部サーバーURLが不正です。")
+        }
+        return url
+    }()
+}
+
 struct AngelicServerSettings: Equatable, Sendable {
     let baseURL: URL
     let setupToken: String
@@ -17,8 +26,6 @@ struct AngelicConnection: Codable, Equatable, Sendable {
 }
 
 enum AuthenticationError: LocalizedError, Equatable {
-    case invalidServerURL
-    case insecureServerURL
     case missingSetupToken
     case invalidSetupToken
     case missingCookies
@@ -30,10 +37,6 @@ enum AuthenticationError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .invalidServerURL:
-            "外部サーバーのURLが正しくありません。"
-        case .insecureServerURL:
-            "Cookieを安全に送るため、サーバーURLにはHTTPSが必要です。"
         case .missingSetupToken:
             "サーバーのセットアップトークンを入力してください。"
         case .invalidSetupToken:
@@ -84,23 +87,7 @@ final class AuthenticationViewModel: ObservableObject {
         }
     }
 
-    func validateSettings(baseURLText: String, setupToken: String) throws -> AngelicServerSettings {
-        let trimmedURL = baseURLText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard
-            let url = URL(string: trimmedURL),
-            let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-            components.host != nil,
-            components.user == nil,
-            components.password == nil,
-            components.query == nil,
-            components.fragment == nil
-        else {
-            throw AuthenticationError.invalidServerURL
-        }
-        guard components.scheme?.lowercased() == "https" else {
-            throw AuthenticationError.insecureServerURL
-        }
-
+    func validateSettings(setupToken: String) throws -> AngelicServerSettings {
         let trimmedToken = setupToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedToken.isEmpty else {
             throw AuthenticationError.missingSetupToken
@@ -115,7 +102,10 @@ final class AuthenticationViewModel: ObservableObject {
             throw AuthenticationError.invalidSetupToken
         }
 
-        return AngelicServerSettings(baseURL: url, setupToken: trimmedToken)
+        return AngelicServerSettings(
+            baseURL: AngelicServerConfiguration.baseURL,
+            setupToken: trimmedToken
+        )
     }
 
     func connect(
@@ -166,7 +156,7 @@ final class AuthenticationViewModel: ObservableObject {
             connectionStore: PreviewConnectionStore(
                 connection: connected
                     ? AngelicConnection(
-                        serverURL: URL(string: "https://agenda.example.com")!,
+                        serverURL: AngelicServerConfiguration.baseURL,
                         connectedAt: Date()
                     )
                     : nil
