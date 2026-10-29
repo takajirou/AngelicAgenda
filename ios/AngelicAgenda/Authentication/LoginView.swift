@@ -2,7 +2,6 @@ import SwiftUI
 
 struct LoginView: View {
     @EnvironmentObject private var authentication: AuthenticationViewModel
-    @AppStorage("angelicServerURL") private var serverURL = ""
 
     @State private var setupToken = ""
     @State private var settings: AngelicServerSettings?
@@ -12,12 +11,6 @@ struct LoginView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("https://agenda.example.com", text: $serverURL)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .accessibilityLabel("外部サーバーURL")
-
                     SecureField("セットアップトークン", text: $setupToken)
                         .textContentType(.password)
                         .textInputAutocapitalization(.never)
@@ -25,7 +18,7 @@ struct LoginView: View {
                 } header: {
                     Text("外部サーバー")
                 } footer: {
-                    Text("セットアップトークンはサーバーの ANGELIC_SETUP_TOKEN と同じ値です。端末には保存しません。")
+                    Text("接続先は agenda-api.takajirou.app に固定されています。セットアップトークンはサーバーの ANGELIC_SETUP_TOKEN と同じ値です。端末には保存しません。")
                 }
 
                 Section {
@@ -73,10 +66,7 @@ struct LoginView: View {
 
     private func startLogin() {
         do {
-            settings = try authentication.validateSettings(
-                baseURLText: serverURL,
-                setupToken: setupToken
-            )
+            settings = try authentication.validateSettings(setupToken: setupToken)
             authentication.clearError()
             isShowingXLogin = true
         } catch {
