@@ -17,7 +17,7 @@ export class XNotificationDataDto {
   type?: string;
 
   @IsOptional()
-  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @IsString()
   @MaxLength(2048)
   uri?: string;
 

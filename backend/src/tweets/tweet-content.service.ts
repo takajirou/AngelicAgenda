@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { XNotificationWebhookDto } from './tweet-content.dto.js';
 import {
   serializeTweetContent,
@@ -23,6 +23,8 @@ interface TweetReference {
 
 @Injectable()
 export class TweetContentService {
+  private readonly logger = new Logger(TweetContentService.name);
+
   constructor(private readonly repository: TweetContentRepository) {}
 
   async ingest(
@@ -36,6 +38,9 @@ export class TweetContentService {
     const reference = uri ? this.parseTweetReference(uri) : undefined;
 
     if (!text || !authorDisplayName || !uri || !reference) {
+      this.logger.warn(
+        `Ignored X notification (text=${String(Boolean(text))}, title=${String(Boolean(authorDisplayName))}, uri=${String(Boolean(uri))}, tweetReference=${String(Boolean(reference))})`,
+      );
       return { status: 'ignored', reason: 'not_a_tweet_notification' };
     }
 
@@ -55,6 +60,11 @@ export class TweetContentService {
     const saved = await this.repository.save(
       tweet,
       payload as Readonly<Record<string, unknown>>,
+    );
+    this.logger.log(
+      saved.duplicate
+        ? 'Duplicate X notification received'
+        : 'X notification stored',
     );
     return {
       status: 'accepted',
@@ -76,12 +86,19 @@ export class TweetContentService {
   private parseTweetReference(uri: string): TweetReference | undefined {
     let url: URL;
     try {
-      url = new URL(uri);
+      // XのWeb Pushはクリック先を絶対URLではなく相対パスで送ることがある。
+      url = new URL(uri, 'https://x.com');
     } catch {
       return undefined;
     }
 
-    if (url.protocol !== 'https:' || !allowedXHosts.has(url.hostname)) {
+    if (
+      url.protocol !== 'https:' ||
+      !allowedXHosts.has(url.hostname) ||
+      url.username ||
+      url.password ||
+      (url.port && url.port !== '443')
+    ) {
       return undefined;
     }
 

@@ -86,6 +86,25 @@ describe('TweetContentService', () => {
     });
   });
 
+  it('accepts the relative status path used by X Web Push', async () => {
+    const result = await service.ingest({
+      title: '公式アカウント',
+      body: 'ライブ先行受付を開始しました',
+      data: {
+        uri: '/official/status/1234567890123456789',
+      },
+    });
+
+    expect(result).toMatchObject({
+      status: 'accepted',
+      tweet: {
+        tweetId: '1234567890123456789',
+        authorHandle: 'official',
+        originalUrl: 'https://x.com/i/web/status/1234567890123456789',
+      },
+    });
+  });
+
   it('falls back to top-level values when nested strings are empty', async () => {
     const result = await service.ingest({
       title: '公式',

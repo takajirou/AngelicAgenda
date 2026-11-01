@@ -33,7 +33,6 @@ describe('AppController (e2e)', () => {
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
-        forbidNonWhitelisted: true,
         transform: true,
       }),
     );
@@ -143,16 +142,29 @@ describe('AppController (e2e)', () => {
     expect(saveTweet).toHaveBeenCalledOnce();
   });
 
-  it('/webhooks/x rejects unknown payload fields', () => {
+  it('/webhooks/x strips evolving X fields and accepts a relative status path', () => {
     return request(app.getHttpServer())
       .post('/webhooks/x')
       .send({
         title: '公式アカウント',
         body: '本文',
-        data: { uri: 'https://x.com/official/status/123' },
-        unexpected: 'value',
+        badge: 'https://abs.twimg.com/responsive-web/client-web/icon.png',
+        data: {
+          uri: '/official/status/123',
+          iid: 'push-impression-id',
+          tweet_id: '123',
+        },
       })
-      .expect(400);
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          status: 'accepted',
+          tweet: {
+            tweetId: '123',
+            authorHandle: 'official',
+          },
+        });
+      });
   });
 
   it('/tweets requires authentication and returns saved content', async () => {
