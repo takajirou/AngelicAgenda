@@ -1,0 +1,103 @@
+name: Deploy production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Run end-to-end tests
+        run: npm run test:e2e
+
+      - name: Build
+        run: npm run build
+
+  deploy:
+    name: Deploy to home server
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+      - angelic-agenda
+    environment: production
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Prepare deployment secrets
+        shell: pwsh
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          ANGELIC_SETUP_TOKEN: ${{ secrets.ANGELIC_SETUP_TOKEN }}
+          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $secretDirectory = Join-Path $env:GITHUB_WORKSPACE "deploy\secrets"
+          New-Item -ItemType Directory -Force $secretDirectory | Out-Null
+
+          $secretValues = @{
+            postgres_password = $env:POSTGRES_PASSWORD
+            angelic_setup_token = $env:ANGELIC_SETUP_TOKEN
+            cloudflare_tunnel_token = $env:CLOUDFLARE_TUNNEL_TOKEN
+          }
+
+          $utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
+          foreach ($entry in $secretValues.GetEnumerator()) {
+            if ([string]::IsNullOrWhiteSpace($entry.Value)) {
+              throw "Required GitHub Actions secret is missing: $($entry.Key)"
+            }
+
+            $path = Join-Path $secretDirectory $entry.Key
+            [System.IO.File]::WriteAllText($path, $entry.Value.Trim(), $utf8WithoutBom)
+          }
+
+      - name: Deploy and verify
+        shell: pwsh
+        run: >-
+          ./deploy/scripts/deploy-production.ps1
+          -HealthUrl "https://agenda-api.takajirou.app/health"
+
+      - name: Show diagnostics after failure
+        if: failure()
+        shell: pwsh
+        run: |
+          docker compose -f deploy\compose.production.yml ps
+          docker compose -f deploy\compose.production.yml logs --no-color --tail 100 backend cloudflared
