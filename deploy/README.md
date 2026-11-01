@@ -10,6 +10,7 @@ NestJS、Angelic-Angel、PostgreSQLを自宅Windows PCのDocker Desktopで動か
 - Git for Windows
 - Cloudflareアカウント
 - CloudflareでDNS管理する独自ドメイン
+- 自動デプロイを使用する場合は、GitHub Actionsのself-hosted runner
 
 安定した公開URLを作るには独自ドメインが必要です。無料のQuick TunnelはURLが起動ごとに変わるため、動作確認以外には使用しません。
 
@@ -44,7 +45,6 @@ OneDriveなどへ自動同期されない、現在のユーザーだけが使用
 ```powershell
 git clone <このリポジトリのURL> AngelicAgenda
 Set-Location AngelicAgenda
-Copy-Item deploy\.env.production.example deploy\.env.production
 
 function New-RandomHex {
     param([int]$ByteCount = 32)
@@ -91,14 +91,14 @@ Tunnelトークンを持つ人はTunnelを起動できます。Git、Issue、ロ
 ## 5. 構成検証と起動
 
 ```powershell
-docker compose --env-file deploy\.env.production -f deploy\compose.production.yml config --quiet
-docker compose --env-file deploy\.env.production -f deploy\compose.production.yml up --build --detach
+docker compose -f deploy\compose.production.yml config --quiet
+docker compose -f deploy\compose.production.yml up --build --detach
 ```
 
 初回はRustとNestJSをビルドするため時間がかかります。
 
 ```powershell
-docker compose --env-file deploy\.env.production -f deploy\compose.production.yml ps
+docker compose -f deploy\compose.production.yml ps
 curl.exe --fail-with-body https://api.example.com/health
 ```
 
@@ -107,7 +107,7 @@ curl.exe --fail-with-body https://api.example.com/health
 失敗時はCookieやトークンを出力しない範囲でログを確認します。
 
 ```powershell
-docker compose --env-file deploy\.env.production -f deploy\compose.production.yml logs --tail 100 backend cloudflared
+docker compose -f deploy\compose.production.yml logs --tail 100 backend cloudflared
 ```
 
 Cloudflare Tunnelは外向き接続だけを使用するため、ルーターのポート転送、固定IP、Windows Defender Firewallの受信規則追加は不要です。自宅のグローバルIPが変わってもTunnelは再接続します。
@@ -118,14 +118,49 @@ iOSアプリの外部サーバーのベースURLは`https://agenda-api.takajirou
 
 接続が成功すると、Angelic-Angelの設定はDocker volume `angelic_angel_data`へ保存され、コンテナ再作成後も維持されます。受信したツイート内容はPostgreSQLの`tweet_contents`テーブルへ保存されます。
 
+## 7. GitHub Actionsの自動デプロイを設定する
+
+`main`へのpush時に、CIが成功した場合だけ自宅Windows PCへデプロイします。自宅PCでDocker Desktopが起動していることが前提です。
+
+### self-hosted runnerを登録する
+
+1. GitHubリポジトリの「Settings > Actions > Runners」からWindows x64 runnerを追加する
+2. 管理者PowerShellで`C:\`へ移動し、GitHubに表示されるコマンドを実行して`C:\actions-runner`へ展開する。`C:\Windows\System32`配下には配置しない
+3. runnerの追加ラベルとして`angelic-agenda`を設定する
+4. runnerをWindowsサービスとして登録し、既定の`NT AUTHORITY\NETWORK SERVICE`ではなく、Docker Desktopを操作できるWindowsユーザーで実行する
+5. そのユーザーで`docker version`と`docker compose version`が成功することを確認する
+
+GitHubが表示するrunner登録トークンは短時間だけ有効です。リポジトリ、ログ、チャットへ保存しないでください。公開リポジトリでは、信頼できないpull requestをself-hosted runnerで実行しないでください。このワークフローは`main`へのpushと手動実行だけを対象にしています。
+
+### production environmentとSecretsを登録する
+
+GitHubリポジトリの「Settings > Environments」で`production` environmentを作成し、次のEnvironment secretsを登録します。
+
+| Secret名 | 設定する値 |
+| --- | --- |
+| `POSTGRES_PASSWORD` | `deploy\secrets\postgres_password`の内容 |
+| `ANGELIC_SETUP_TOKEN` | `deploy\secrets\angelic_setup_token`の内容 |
+| `CLOUDFLARE_TUNNEL_TOKEN` | `deploy\secrets\cloudflare_tunnel_token`の内容 |
+
+`ANGELIC_SETUP_TOKEN`はiOSアプリのBuild Settingに設定した値と一致させてください。自動実行を止めないため、`production` environmentにrequired reviewerは設定しません。デプロイの同時実行はワークフロー側で直列化されます。
+
+初回セットアップ後は「Actions > Deploy production > Run workflow」で手動実行し、成功を確認します。その後は`main`へのpushごとに次の処理が自動実行されます。
+
+1. lint、単体テスト、E2Eテスト、ビルド
+2. GitHub SecretsからCompose用のシークレットファイルを作成
+3. バックエンドイメージをビルドし、Composeサービスを更新
+4. コンテナのhealthcheckと公開`/health`を確認
+
+失敗時は、通知本文やCookieを出さない範囲でコンテナ状態と直近100行のログをActionsへ出力します。
+
 ## 運用
 
 ### 更新
 
 ```powershell
 git pull --ff-only
-docker compose --env-file deploy\.env.production -f deploy\compose.production.yml pull
-docker compose --env-file deploy\.env.production -f deploy\compose.production.yml up --build --detach
+docker compose -f deploy\compose.production.yml pull
+docker compose -f deploy\compose.production.yml up --build --detach
 ```
 
 更新後に`docker compose ps`と`/health`を確認してから、不要な旧イメージを`docker image prune`で削除します。
@@ -136,10 +171,10 @@ PC本体の故障に備え、バックアップを外付けディスクや暗号
 
 ```powershell
 New-Item -ItemType Directory -Force backups | Out-Null
-docker compose --env-file deploy\.env.production -f deploy\compose.production.yml exec -T database pg_dump -U app -d app -Fc -f /tmp/angelic-agenda.dump
-docker compose --env-file deploy\.env.production -f deploy\compose.production.yml cp database:/tmp/angelic-agenda.dump backups\angelic-agenda.dump
-docker compose --env-file deploy\.env.production -f deploy\compose.production.yml exec -T database rm /tmp/angelic-agenda.dump
-docker compose --env-file deploy\.env.production -f deploy\compose.production.yml cp backend:/var/lib/angelic-angel/angelic-angel.toml backups\angelic-angel.toml
+docker compose -f deploy\compose.production.yml exec -T database pg_dump -U app -d app -Fc -f /tmp/angelic-agenda.dump
+docker compose -f deploy\compose.production.yml cp database:/tmp/angelic-agenda.dump backups\angelic-agenda.dump
+docker compose -f deploy\compose.production.yml exec -T database rm /tmp/angelic-agenda.dump
+docker compose -f deploy\compose.production.yml cp backend:/var/lib/angelic-angel/angelic-angel.toml backups\angelic-angel.toml
 ```
 
 `angelic-angel.toml`にはXのCookieとPush登録情報が含まれるため、暗号化して保管してください。
