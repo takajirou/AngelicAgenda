@@ -1,10 +1,5 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
-import { Pool, type PoolClient } from 'pg';
+import { Injectable } from '@nestjs/common';
+import { DatabaseService } from '../database/database.service.js';
 import type { TweetContent } from './tweet-content.model.js';
 import {
   TweetContentRepository,
@@ -24,72 +19,27 @@ interface TweetContentRow {
 }
 
 @Injectable()
-export class PostgresTweetContentRepository
-  extends TweetContentRepository
-  implements OnModuleInit, OnModuleDestroy
-{
-  private readonly logger = new Logger(PostgresTweetContentRepository.name);
-  private pool: Pool | undefined;
-
-  async onModuleInit(): Promise<void> {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) {
-      throw new Error('DATABASE_URL is required');
-    }
-
-    this.pool = new Pool({
-      connectionString,
-      connectionTimeoutMillis: 5_000,
-      idleTimeoutMillis: 30_000,
-      max: 10,
-    });
-
-    const client = await this.pool.connect();
-    try {
-      await this.initializeSchema(client);
-    } finally {
-      client.release();
-    }
-    this.logger.log('Tweet content repository is ready');
-  }
-
-  async onModuleDestroy(): Promise<void> {
-    await this.pool?.end();
-    this.pool = undefined;
+export class PostgresTweetContentRepository extends TweetContentRepository {
+  constructor(private readonly database: DatabaseService) {
+    super();
   }
 
   async save(
+    userId: string,
     tweet: TweetContent,
     rawPayload: Readonly<Record<string, unknown>>,
   ): Promise<SaveTweetContentResult> {
-    const result = await this.requirePool().query<TweetContentRow>(
-      `
-        INSERT INTO tweet_contents (
-          tweet_id,
-          text,
-          author_display_name,
-          author_handle,
-          original_url,
-          notification_type,
-          source_tag,
-          notified_at,
-          received_at,
-          raw_payload
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
-        ON CONFLICT (tweet_id) DO NOTHING
-        RETURNING
-          tweet_id,
-          text,
-          author_display_name,
-          author_handle,
-          original_url,
-          notification_type,
-          source_tag,
-          notified_at,
-          received_at
-      `,
+    const result = await this.database.query<TweetContentRow>(
+      `INSERT INTO user_tweet_contents (
+         user_id, tweet_id, text, author_display_name, author_handle,
+         original_url, notification_type, source_tag, notified_at,
+         received_at, raw_payload
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+       ON CONFLICT (user_id, tweet_id) DO NOTHING
+       RETURNING tweet_id, text, author_display_name, author_handle,
+         original_url, notification_type, source_tag, notified_at, received_at`,
       [
+        userId,
         tweet.tweetId,
         tweet.text,
         tweet.authorDisplayName,
@@ -102,86 +52,31 @@ export class PostgresTweetContentRepository
         JSON.stringify(rawPayload),
       ],
     );
-
     const inserted = result.rows[0];
-    if (inserted) {
-      return { duplicate: false, tweet: this.mapRow(inserted) };
-    }
+    if (inserted) return { duplicate: false, tweet: this.mapRow(inserted) };
 
-    const existing = await this.requirePool().query<TweetContentRow>(
-      `
-        SELECT
-          tweet_id,
-          text,
-          author_display_name,
-          author_handle,
-          original_url,
-          notification_type,
-          source_tag,
-          notified_at,
-          received_at
-        FROM tweet_contents
-        WHERE tweet_id = $1
-      `,
-      [tweet.tweetId],
+    const existing = await this.database.query<TweetContentRow>(
+      `SELECT tweet_id, text, author_display_name, author_handle,
+         original_url, notification_type, source_tag, notified_at, received_at
+       FROM user_tweet_contents WHERE user_id = $1 AND tweet_id = $2`,
+      [userId, tweet.tweetId],
     );
     const duplicate = existing.rows[0];
-    if (!duplicate) {
-      throw new Error('Tweet content disappeared after duplicate detection');
-    }
+    if (!duplicate) throw new Error('Tweet content disappeared after duplicate detection');
     return { duplicate: true, tweet: this.mapRow(duplicate) };
   }
 
-  async findLatest(limit: number): Promise<TweetContent[]> {
-    const result = await this.requirePool().query<TweetContentRow>(
-      `
-        SELECT
-          tweet_id,
-          text,
-          author_display_name,
-          author_handle,
-          original_url,
-          notification_type,
-          source_tag,
-          notified_at,
-          received_at
-        FROM tweet_contents
-        ORDER BY received_at DESC, tweet_id DESC
-        LIMIT $1
-      `,
-      [limit],
+  async findLatest(userId: string, limit: number): Promise<TweetContent[]> {
+    const result = await this.database.query<TweetContentRow>(
+      `SELECT tweet_id, text, author_display_name, author_handle,
+         original_url, notification_type, source_tag, notified_at, received_at
+       FROM user_tweet_contents
+       WHERE user_id = $1
+       ORDER BY received_at DESC, tweet_id DESC
+       LIMIT $2`,
+      [userId, limit],
     );
     return result.rows.map((row) => this.mapRow(row));
-  }
-
-  private requirePool(): Pool {
-    if (!this.pool) {
-      throw new Error('Tweet content repository is not initialized');
-    }
-    return this.pool;
-  }
-
-  private async initializeSchema(client: PoolClient): Promise<void> {
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS tweet_contents (
-        tweet_id varchar(32) PRIMARY KEY,
-        text text NOT NULL CHECK (char_length(text) BETWEEN 1 AND 10000),
-        author_display_name varchar(512) NOT NULL,
-        author_handle varchar(64),
-        original_url varchar(2048) NOT NULL,
-        notification_type varchar(64),
-        source_tag varchar(512),
-        notified_at timestamptz,
-        received_at timestamptz NOT NULL,
-        raw_payload jsonb NOT NULL,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        CHECK (tweet_id ~ '^[0-9]{1,32}$')
-      )
-    `);
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS tweet_contents_received_at_idx
-      ON tweet_contents (received_at DESC)
-    `);
   }
 
   private mapRow(row: TweetContentRow): TweetContent {

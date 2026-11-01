@@ -1,66 +1,38 @@
 # AngelicAgenda API
 
-NestJS APIとAngelic-Angelを同じ外部サーバー上で動かします。iOSアプリから受け取ったX Cookieは入力検証後、権限`0600`の設定ファイルへ保存され、Angelic-Angelの登録と通知待受に使用されます。復号されたX通知からツイート本文を抽出し、PostgreSQLへ保存します。Cookie値と通知本文はログへ出しません。
+NestJS、PostgreSQL、Angelic-Angelを組み合わせたマルチユーザーAPIです。利用者ごとに認証、Xセッション、通知リスナー、保存ポストを分離します。
+
+## セキュリティモデル
+
+- アプリ利用者はメールアドレスと12文字以上のパスワードで登録・ログインする
+- パスワードはランダムsalt、サーバー専用pepper、scryptで一方向ハッシュ化する
+- API認証には30日で失効するランダムなBearerトークンを使い、DBにはHMACハッシュだけを保存する
+- X CookieとPush登録情報を含む設定はAES-256-GCMで暗号化してPostgreSQLへ保存する
+- 復号した設定は実行中だけtmpfsへ権限`0600`で配置し、ログへ出さない
+- Angelic-Angelを利用者ごとに1プロセス起動し、署名付き内部Webhookで利用者を特定する
+- 投稿は`user_id`と投稿IDの組で重複排除し、本人のBearerトークンでのみ取得できる
+- X連携解除とアカウント削除で、リスナー・暗号化設定・利用者データを削除する
 
 ## 必須環境変数
 
-| 変数                        | 内容                                                       |
-| --------------------------- | ---------------------------------------------------------- |
-| `ANGELIC_SETUP_TOKEN`       | iOSアプリとのセットアップAPIを保護する十分に長いランダム値 |
-| `ANGELIC_ANGEL_BINARY_PATH` | Angelic-Angel実行ファイルの絶対パス                        |
-| `ANGELIC_ANGEL_CONFIG_PATH` | Cookieと登録情報を保存する設定ファイルの絶対パス           |
-| `DATABASE_URL`              | ツイート内容を保存するPostgreSQL接続URL                    |
-| `WEBHOOK_ENDPOINT`          | `http://127.0.0.1:3000/webhooks/x`（Composeでは設定済み）  |
+| 変数 | 内容 |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL接続URL |
+| `AUTH_PEPPER`または`AUTH_PEPPER_FILE` | 32文字以上の認証用秘密値 |
+| `X_SESSION_ENCRYPTION_KEY`または`X_SESSION_ENCRYPTION_KEY_FILE` | 32バイトを表す64桁の16進数 |
+| `ANGELIC_ANGEL_BINARY_PATH` | Angelic-Angel実行ファイルの絶対パス |
+| `ANGELIC_ANGEL_CONFIG_DIRECTORY` | 復号した実行時設定を置くtmpfs上の絶対パス |
+| `WEBHOOK_BASE_URL` | `http://127.0.0.1:3000/webhooks/x/` |
+| `MAX_ACTIVE_X_SESSIONS` | 同時に保持する利用者別Xセッション数。既定値20 |
 
-Docker Composeではバイナリ、設定パス、DB接続、内部Webhook URLが設定済みです。`.env.example`を`.env`へコピーし、秘密値を設定します。
+## APIフロー
 
-```bash
-cp .env.example .env
-openssl rand -hex 32
-# 出力を.envのANGELIC_SETUP_TOKENへ設定
-docker compose up --build
-```
-
-自宅Windows PCからCloudflare Tunnel経由で公開する本番構成は、[`deploy/README.md`](../deploy/README.md)を参照してください。本番ComposeはAPIやDBのポートをホストへ公開せず、シークレットをGit管理外のファイルから読み込みます。
-
-外部公開時は、Caddyやnginxなどのリバースプロキシで有効なTLS証明書を設定し、iOSアプリには`https://`の公開URLを入力してください。NestJSの3000番ポートをそのままインターネットへ公開しないでください。
-
-## セットアップAPI
-
-`POST /integrations/angelic-angel/session`
-
-- `Authorization: Bearer <ANGELIC_SETUP_TOKEN>`が必須
-- JSON本文は`authToken`と`ct0`
-- 成功時は登録を完了して`listen`を起動し、`{"status":"registered"}`を返す
-- 同時実行、不正入力、設定不足、Angelic-Angel登録失敗は明示的にエラーを返す
-
-このAPIはログイン済みWeb Cookieを扱います。レート制限、アクセス元制限、監視をリバースプロキシ側でも追加してください。
-
-## X通知Webhook
-
-`POST /webhooks/x`
-
-- Angelic-Angelが復号した通知JSONを受信する内部エンドポイント
-- ループバックアドレスからの接続だけを許可し、Cloudflare Tunnelなど外部からの要求は拒否する
-- `data.uri`がXの投稿URLまたは`/account/status/id`形式の相対パスで、タイトルと本文を取得できた通知だけを保存する
-- X側が追加した未使用フィールドは型にかかわらず境界で除去し、保存に利用するフィールドだけを検証する
-- 投稿ID、本文、投稿者表示名、投稿者ハンドル、元URL、通知種別、通知時刻を正規化する
-- 同じ投稿IDの再送は重複登録せず、`duplicate: true`を返す
-- 投稿以外の通知は`ignored`として正常応答し、Angelic-Angelの接続を維持する
-- 通知本文をログへ出さず、保存・重複・無視と必要フィールドの有無だけを記録する
-
-Angelic-Angelの固定コミットには、安全パッチをDockerビルド時に適用します。パッチは通知本文のログ出力を止め、Webhookが非2xxを返したときに`not_delivered`でACKするためのものです。
-
-リスナーの生ログはそのまま出力せず、AutoPush接続、通知受信、復号、Webhook転送の成否だけを固定文言へ変換して記録します。Cookie、通知本文、投稿ID、Push登録IDはログへ出しません。
-
-## ツイート取得API
-
-`GET /tweets?limit=50`
-
-- `Authorization: Bearer <ANGELIC_SETUP_TOKEN>`が必須
-- 保存済みツイートを受信日時の新しい順で返す
-- `limit`は1〜100、省略時は50
-- 現在の共有トークン方式は個人検証用。複数ユーザー対応時はユーザー認証とデータ分離へ置き換える
+1. `POST /auth/register`または`POST /auth/login`でアプリセッションを取得する
+2. Bearerトークン付きで`POST /integrations/angelic-angel/session`を呼び、本人のX Cookieを登録する
+3. Angelic-Angelが`POST /webhooks/x/{userId}/{signature}`へ通知を転送する
+4. `GET /tweets?limit=50`で本人の保存ポストだけを取得する
+5. `DELETE /integrations/angelic-angel/session`でX連携を解除する
+6. `DELETE /auth/account`でアカウントと関連データを削除する
 
 詳細な入出力は[`openapi.yaml`](./openapi.yaml)を参照してください。
 
@@ -73,7 +45,5 @@ npm test
 npm run test:e2e
 npm run build
 ```
-
-## Angelic-Angel
 
 Dockerイメージは[sh1ma/Angelic-Angel](https://github.com/sh1ma/Angelic-Angel)を固定コミットからビルドします。ライセンス本文はイメージ内の`/usr/share/doc/angelic-angel/LICENSE`へ含めています。

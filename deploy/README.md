@@ -60,10 +60,11 @@ function New-RandomHex {
 }
 
 New-RandomHex | Set-Content -NoNewline -Encoding ascii deploy\secrets\postgres_password
-New-RandomHex | Set-Content -NoNewline -Encoding ascii deploy\secrets\angelic_setup_token
+New-RandomHex | Set-Content -NoNewline -Encoding ascii deploy\secrets\auth_pepper
+New-RandomHex | Set-Content -NoNewline -Encoding ascii deploy\secrets\x_session_encryption_key
 ```
 
-Webhookはバックエンドコンテナ内の`http://127.0.0.1:3000/webhooks/x`へ固定されるため、外部公開URLの設定は不要です。
+Webhookはバックエンドコンテナ内の署名付きループバックURLへ固定されるため、外部公開URLの設定は不要です。
 
 ## 4. Cloudflare Tunnelを作成する
 
@@ -114,9 +115,9 @@ Cloudflare Tunnelは外向き接続だけを使用するため、ルーターの
 
 ## 6. iOSアプリから接続する
 
-iOSアプリの外部サーバーのベースURLは`https://agenda-api.takajirou.app`に固定されています。`/webhooks/x`はAngelic-Angelが通知を転送する別のエンドポイントです。`ios/Config/Secrets.xcconfig.example`を`Secrets.xcconfig`としてコピーし、`deploy\secrets\angelic_setup_token`と同じ値を`ANGELIC_SETUP_TOKEN`へ設定してからアプリをビルドします。接続画面での入力は不要です。
+iOSアプリの外部サーバーのベースURLは`https://agenda-api.takajirou.app`に固定されています。利用者はアプリ内で登録・ログインするため、共通シークレットをアプリへ設定する必要はありません。
 
-接続が成功すると、Angelic-Angelの設定はDocker volume `angelic_angel_data`へ保存され、コンテナ再作成後も維持されます。受信したツイート内容はPostgreSQLの`tweet_contents`テーブルへ保存されます。
+接続が成功すると、利用者ごとのAngelic-Angel設定はAES-256-GCMで暗号化してPostgreSQLへ保存されます。復号した設定は実行中だけtmpfsへ配置されます。受信ポストは`user_tweet_contents`へ利用者別に保存されます。
 
 ## 7. GitHub Actionsの自動デプロイを設定する
 
@@ -139,10 +140,11 @@ GitHubリポジトリの「Settings > Environments」で`production` environment
 | Secret名 | 設定する値 |
 | --- | --- |
 | `POSTGRES_PASSWORD` | `deploy\secrets\postgres_password`の内容 |
-| `ANGELIC_SETUP_TOKEN` | `deploy\secrets\angelic_setup_token`の内容 |
+| `AUTH_PEPPER` | `deploy\secrets\auth_pepper`の内容 |
+| `X_SESSION_ENCRYPTION_KEY` | `deploy\secrets\x_session_encryption_key`の内容 |
 | `CLOUDFLARE_TUNNEL_TOKEN` | `deploy\secrets\cloudflare_tunnel_token`の内容 |
 
-`ANGELIC_SETUP_TOKEN`はiOSアプリのBuild Settingに設定した値と一致させてください。自動実行を止めないため、`production` environmentにrequired reviewerは設定しません。デプロイの同時実行はワークフロー側で直列化されます。
+`AUTH_PEPPER`と`X_SESSION_ENCRYPTION_KEY`を失うと既存のログインセッションやX連携を復元できません。安全な場所へバックアップし、通常のデプロイでは値を変更しないでください。自動実行を止めないため、`production` environmentにrequired reviewerは設定しません。
 
 初回セットアップ後は「Actions > Deploy production > Run workflow」で手動実行し、成功を確認します。その後は`main`へのpushごとに次の処理が自動実行されます。
 
@@ -151,6 +153,7 @@ GitHubリポジトリの「Settings > Environments」で`production` environment
 3. 既存データを保持したままPostgreSQLユーザーのパスワードを現在のSecretへ同期
 4. バックエンドイメージをビルドし、Composeサービスを更新
 5. コンテナのhealthcheckと公開`/health`を確認
+6. 初回移行時だけ、平文Cookieが残る旧`angelic_angel_data` volumeと旧セットアップトークンファイルを削除
 
 失敗時は、通知本文やCookieを出さない範囲でコンテナ状態と直近100行のログをActionsへ出力します。
 
@@ -177,10 +180,9 @@ New-Item -ItemType Directory -Force backups | Out-Null
 docker compose -f deploy\compose.production.yml exec -T database pg_dump -U app -d app -Fc -f /tmp/angelic-agenda.dump
 docker compose -f deploy\compose.production.yml cp database:/tmp/angelic-agenda.dump backups\angelic-agenda.dump
 docker compose -f deploy\compose.production.yml exec -T database rm /tmp/angelic-agenda.dump
-docker compose -f deploy\compose.production.yml cp backend:/var/lib/angelic-angel/angelic-angel.toml backups\angelic-angel.toml
 ```
 
-`angelic-angel.toml`にはXのCookieとPush登録情報が含まれるため、暗号化して保管してください。
+XセッションはPostgreSQLバックアップ内で暗号化されています。復元には同じ`X_SESSION_ENCRYPTION_KEY`が必要です。
 
 ### 停電・再起動後
 

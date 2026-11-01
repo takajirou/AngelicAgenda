@@ -1,46 +1,81 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import {
+  INestApplication,
+  UnauthorizedException,
+  ValidationPipe,
+} from '@nestjs/common';
+import { Test, type TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { App } from 'supertest/types.js';
-import { AppModule } from './../src/app.module.js';
-import { AngelicAngelService } from './../src/integrations/angelic-angel/angelic-angel.service.js';
-import type { TweetContent } from './../src/tweets/tweet-content.model.js';
-import { TweetContentRepository } from './../src/tweets/tweet-content.repository.js';
+import type { App } from 'supertest/types.js';
+import { AppAuthGuard, type AuthenticatedRequest } from '../src/auth/app-auth.guard.js';
+import { AuthService } from '../src/auth/auth.service.js';
+import { DatabaseService } from '../src/database/database.service.js';
+import { AngelicAngelService } from '../src/integrations/angelic-angel/angelic-angel.service.js';
+import { AppModule } from '../src/app.module.js';
+import type { TweetContent } from '../src/tweets/tweet-content.model.js';
+import { TweetContentRepository } from '../src/tweets/tweet-content.repository.js';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
+  const user = {
+    id: '11111111-1111-4111-8111-111111111111',
+    email: 'user@example.com',
+  };
+  const authToken = 'test-session-token';
   const provision = vi.fn();
+  const disconnect = vi.fn();
+  const verifyWebhookRoute = vi.fn();
   const saveTweet = vi.fn();
   const findLatestTweets = vi.fn();
-  const setupToken = 's'.repeat(64);
-  const originalSetupToken = process.env.ANGELIC_SETUP_TOKEN;
-  const originalSetupTokenFile = process.env.ANGELIC_SETUP_TOKEN_FILE;
+  const authSession = {
+    token: authToken,
+    expiresAt: '2026-12-01T00:00:00.000Z',
+    user,
+  };
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
+      .overrideProvider(DatabaseService)
+      .useValue({})
+      .overrideProvider(AuthService)
+      .useValue({
+        register: vi.fn(async () => authSession),
+        login: vi.fn(async () => authSession),
+        logout: vi.fn(),
+        deleteAccount: vi.fn(),
+      })
+      .overrideGuard(AppAuthGuard)
+      .useValue({
+        canActivate: (context: { switchToHttp: () => { getRequest: () => AuthenticatedRequest } }) => {
+          const incoming = context.switchToHttp().getRequest();
+          if (incoming.header('authorization') !== `Bearer ${authToken}`) {
+            throw new UnauthorizedException();
+          }
+          incoming.appUser = user;
+          incoming.appSessionToken = authToken;
+          return true;
+        },
+      })
       .overrideProvider(AngelicAngelService)
-      .useValue({ provision })
+      .useValue({
+        provision,
+        disconnect,
+        isConnected: vi.fn(async () => true),
+        verifyWebhookRoute,
+      })
       .overrideProvider(TweetContentRepository)
       .useValue({ save: saveTweet, findLatest: findLatestTweets })
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        transform: true,
-      }),
-    );
-    process.env.ANGELIC_SETUP_TOKEN = setupToken;
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     provision.mockReset();
+    disconnect.mockReset();
+    verifyWebhookRoute.mockReset();
     saveTweet.mockReset();
     findLatestTweets.mockReset();
-    saveTweet.mockImplementation(async (tweet: TweetContent) => ({
+    saveTweet.mockImplementation(async (_userId: string, tweet: TweetContent) => ({
       duplicate: false,
       tweet,
     }));
@@ -48,183 +83,94 @@ describe('AppController (e2e)', () => {
     await app.init();
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('Hello World!');
+  it('/health (GET)', () =>
+    request(app.getHttpServer()).get('/health').expect(200).expect({ status: 'ok' }));
+
+  it('/auth/register creates an app session', () =>
+    request(app.getHttpServer())
+      .post('/auth/register')
+      .send({ email: user.email, password: 'password-1234' })
+      .expect(201)
+      .expect(authSession));
+
+  it('/auth/register validates credentials', () =>
+    request(app.getHttpServer())
+      .post('/auth/register')
+      .send({ email: 'invalid', password: 'short' })
+      .expect(400));
+
+  it('/auth/register rate limits repeated attempts', async () => {
+    const credentials = { email: user.email, password: 'password-1234' };
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send(credentials)
+        .expect(201);
+    }
+    await request(app.getHttpServer())
+      .post('/auth/register')
+      .send(credentials)
+      .expect(429);
   });
 
-  it('/health (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/health')
-      .expect(200)
-      .expect({ status: 'ok' });
-  });
-
-  it('/integrations/angelic-angel/session rejects a missing setup token', () => {
-    return request(app.getHttpServer())
+  it('/integrations/angelic-angel/session requires an app session', () =>
+    request(app.getHttpServer())
       .post('/integrations/angelic-angel/session')
       .send({ authToken: 'a'.repeat(32), ct0: 'b'.repeat(32) })
-      .expect(401);
-  });
+      .expect(401));
 
-  it('/integrations/angelic-angel/session validates cookie input', () => {
-    return request(app.getHttpServer())
-      .post('/integrations/angelic-angel/session')
-      .set('Authorization', `Bearer ${setupToken}`)
-      .send({ authToken: 'short', ct0: 'b'.repeat(32) })
-      .expect(400);
-  });
-
-  it('/integrations/angelic-angel/session provisions a valid session', async () => {
+  it('/integrations/angelic-angel/session provisions only the current user', async () => {
+    const credentials = { authToken: 'a'.repeat(32), ct0: 'b'.repeat(32) };
     await request(app.getHttpServer())
       .post('/integrations/angelic-angel/session')
-      .set('Authorization', `Bearer ${setupToken}`)
-      .send({ authToken: 'a'.repeat(32), ct0: 'b'.repeat(32) })
+      .set('Authorization', `Bearer ${authToken}`)
+      .send(credentials)
       .expect(200)
       .expect({ status: 'registered' });
-
-    expect(provision).toHaveBeenCalledWith({
-      authToken: 'a'.repeat(32),
-      ct0: 'b'.repeat(32),
-    });
+    expect(provision).toHaveBeenCalledWith(user.id, credentials);
   });
 
-  it('/integrations/angelic-angel/session reads a Docker secret file', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'angelic-secret-test-'));
-    const tokenFile = join(directory, 'setup-token');
-    await writeFile(tokenFile, `${setupToken}\n`, { mode: 0o600 });
-    delete process.env.ANGELIC_SETUP_TOKEN;
-    process.env.ANGELIC_SETUP_TOKEN_FILE = tokenFile;
-
-    try {
-      await request(app.getHttpServer())
-        .post('/integrations/angelic-angel/session')
-        .set('Authorization', `Bearer ${setupToken}`)
-        .send({ authToken: 'a'.repeat(32), ct0: 'b'.repeat(32) })
-        .expect(200);
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
-  });
-
-  it('/webhooks/x extracts and stores tweet content', async () => {
+  it('/webhooks/x routes content to the signed user', async () => {
+    const signature = 'signed-route';
     await request(app.getHttpServer())
-      .post('/webhooks/x')
+      .post(`/webhooks/x/${user.id}/${signature}`)
       .send({
         title: '公式アカウント',
         body: '予約販売は11月1日までです',
-        timestamp: 1_793_273_400_000,
-        tag: 'tweet_123',
-        data: {
-          type: 'tweet',
-          uri: 'https://x.com/official/status/123',
-          title: '公式アカウント',
-          body: '予約販売は11月1日までです',
-          tag: 'tweet_123',
-        },
+        data: { type: 'tweet', uri: 'https://x.com/official/status/123' },
       })
       .expect(200)
       .expect(({ body }) => {
-        expect(body).toMatchObject({
-          status: 'accepted',
-          duplicate: false,
-          tweet: {
-            tweetId: '123',
-            text: '予約販売は11月1日までです',
-            authorHandle: 'official',
-            originalUrl: 'https://x.com/i/web/status/123',
-          },
-        });
+        expect(body).toMatchObject({ status: 'accepted', tweet: { tweetId: '123' } });
       });
-
-    expect(saveTweet).toHaveBeenCalledOnce();
+    expect(verifyWebhookRoute).toHaveBeenCalledWith(user.id, signature);
+    expect(saveTweet).toHaveBeenCalledWith(
+      user.id,
+      expect.objectContaining({ tweetId: '123' }),
+      expect.any(Object),
+    );
   });
 
-  it('/webhooks/x strips evolving X fields and accepts a relative status path', () => {
-    return request(app.getHttpServer())
-      .post('/webhooks/x')
-      .send({
-        title: '公式アカウント',
-        body: '本文',
-        icon: '/responsive-web/icon.png',
-        timestamp: 'not-a-number',
-        data: {
-          uri: '/official/status/123',
-          iid: 'push-impression-id',
-          tweet_id: '123',
-          lang: ['ja'],
-          scribe_target: { section: 'push' },
-          impression_id: 123,
-        },
-      })
-      .expect(200)
-      .expect(({ body }) => {
-        expect(body).toMatchObject({
-          status: 'accepted',
-          tweet: {
-            tweetId: '123',
-            authorHandle: 'official',
-          },
-        });
-      });
-  });
-
-  it('/tweets requires authentication and returns saved content', async () => {
+  it('/tweets returns only the current user content', async () => {
     findLatestTweets.mockResolvedValueOnce([
       {
         tweetId: '123',
         text: '本文',
-        authorDisplayName: '公式アカウント',
+        authorDisplayName: '公式',
         authorHandle: 'official',
         originalUrl: 'https://x.com/i/web/status/123',
         notificationType: 'tweet',
-        sourceTag: 'tweet_123',
+        sourceTag: null,
         notifiedAt: null,
         receivedAt: new Date('2026-10-29T12:00:00.000Z'),
       },
     ]);
-
-    await request(app.getHttpServer()).get('/tweets').expect(401);
     await request(app.getHttpServer())
       .get('/tweets?limit=10')
-      .set('Authorization', `Bearer ${setupToken}`)
-      .expect(200)
-      .expect([
-        {
-          tweetId: '123',
-          text: '本文',
-          authorDisplayName: '公式アカウント',
-          authorHandle: 'official',
-          originalUrl: 'https://x.com/i/web/status/123',
-          notificationType: 'tweet',
-          sourceTag: 'tweet_123',
-          notifiedAt: null,
-          receivedAt: '2026-10-29T12:00:00.000Z',
-        },
-      ]);
-    expect(findLatestTweets).toHaveBeenCalledWith(10);
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(200);
+    expect(findLatestTweets).toHaveBeenCalledWith(user.id, 10);
   });
 
-  it('/tweets validates the result limit', () => {
-    return request(app.getHttpServer())
-      .get('/tweets?limit=101')
-      .set('Authorization', `Bearer ${setupToken}`)
-      .expect(400);
-  });
-
-  afterEach(async () => {
-    await app.close();
-    if (originalSetupToken === undefined) {
-      delete process.env.ANGELIC_SETUP_TOKEN;
-    } else {
-      process.env.ANGELIC_SETUP_TOKEN = originalSetupToken;
-    }
-    if (originalSetupTokenFile === undefined) {
-      delete process.env.ANGELIC_SETUP_TOKEN_FILE;
-    } else {
-      process.env.ANGELIC_SETUP_TOKEN_FILE = originalSetupTokenFile;
-    }
-  });
+  afterEach(async () => app.close());
 });

@@ -1,22 +1,92 @@
 openapi: 3.1.0
 info:
   title: AngelicAgenda API
-  version: 0.1.0
-  description: Angelic-AngelからX通知を受け取り、正規化したツイート内容を提供するAPI
+  version: 0.2.0
+  description: 利用者ごとにX通知の受信・保存・取得を分離するAPI
 servers:
   - url: https://agenda-api.takajirou.app
 paths:
-  /integrations/angelic-angel/session:
+  /auth/register:
     post:
-      summary: XセッションをAngelic-Angelへ登録する
-      security:
-        - bearerAuth: []
+      summary: 利用者登録
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/ProvisionXSessionRequest'
+            schema: { $ref: '#/components/schemas/AuthCredentials' }
+      responses:
+        '201':
+          description: 登録成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /auth/login:
+    post:
+      summary: ログイン
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthCredentials' }
+      responses:
+        '200':
+          description: ログイン成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthSession' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /auth/me:
+    get:
+      summary: 現在の利用者
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 利用者
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppUser' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      summary: 現在のセッションを失効
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: ログアウト成功 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/account:
+    delete:
+      summary: アカウントと関連データを削除
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: 削除成功 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /integrations/angelic-angel/session:
+    get:
+      summary: 本人のX接続状態を取得
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 接続状態
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [connected]
+                properties: { connected: { type: boolean } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      summary: 本人のXセッションを登録
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProvisionXSessionRequest' }
       responses:
         '200':
           description: 登録成功
@@ -25,214 +95,104 @@ paths:
               schema:
                 type: object
                 required: [status]
-                properties:
-                  status:
-                    const: registered
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-  /webhooks/x:
-    post:
-      summary: 復号済みX通知からツイート内容を取り込む
-      description: 同一コンテナのループバックアドレスからのみ利用できます。
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/XNotification'
+                properties: { status: { const: registered } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    delete:
+      summary: 本人のX連携を解除
+      security: [{ bearerAuth: [] }]
       responses:
-        '200':
-          description: 取り込み結果
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - $ref: '#/components/schemas/AcceptedTweet'
-                  - $ref: '#/components/schemas/IgnoredNotification'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+        '204': { description: 解除成功 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /tweets:
     get:
-      summary: 保存済みツイート内容を取得する
-      security:
-        - bearerAuth: []
+      summary: 本人の保存済みポストを取得
+      security: [{ bearerAuth: [] }]
       parameters:
         - name: limit
           in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 50
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
       responses:
         '200':
-          description: 受信日時の降順で並んだツイート内容
+          description: 受信日時の降順
           content:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: '#/components/schemas/TweetContent'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                items: { $ref: '#/components/schemas/TweetContent' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
+    bearerAuth: { type: http, scheme: bearer }
   schemas:
+    AuthCredentials:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 12, maxLength: 128, writeOnly: true }
+    AppUser:
+      type: object
+      additionalProperties: false
+      required: [id, email]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+    AuthSession:
+      type: object
+      additionalProperties: false
+      required: [token, expiresAt, user]
+      properties:
+        token: { type: string, writeOnly: true }
+        expiresAt: { type: string, format: date-time }
+        user: { $ref: '#/components/schemas/AppUser' }
     ProvisionXSessionRequest:
       type: object
       additionalProperties: false
       required: [authToken, ct0]
       properties:
-        authToken:
-          type: string
-          minLength: 20
-          maxLength: 4096
-          writeOnly: true
-        ct0:
-          type: string
-          minLength: 20
-          maxLength: 4096
-          writeOnly: true
-    XNotificationData:
-      type: object
-      description: 未使用の追加フィールドは受信境界で除去されます。
-      properties:
-        type:
-          type: string
-          maxLength: 64
-        uri:
-          type: string
-          format: uri-reference
-          description: Xの投稿を示すHTTPS URLまたは相対パス
-          maxLength: 2048
-        title:
-          type: string
-          maxLength: 512
-        body:
-          type: string
-          maxLength: 10000
-        tag:
-          type: string
-          maxLength: 512
-    XNotification:
-      type: object
-      description: Xが追加する未使用フィールドは受信境界で除去されます。
-      properties:
-        title:
-          type: string
-          maxLength: 512
-        body:
-          type: string
-          maxLength: 10000
-        timestamp:
-          type: integer
-          minimum: 0
-          description: 不正な値は受信日時で補完するため除去されます。
-        tag:
-          type: string
-          maxLength: 512
-        data:
-          $ref: '#/components/schemas/XNotificationData'
+        authToken: { type: string, minLength: 20, maxLength: 4096, writeOnly: true }
+        ct0: { type: string, minLength: 20, maxLength: 4096, writeOnly: true }
     TweetContent:
       type: object
       additionalProperties: false
-      required:
-        - tweetId
-        - text
-        - authorDisplayName
-        - authorHandle
-        - originalUrl
-        - notificationType
-        - sourceTag
-        - notifiedAt
-        - receivedAt
+      required: [tweetId, text, authorDisplayName, authorHandle, originalUrl, notificationType, sourceTag, notifiedAt, receivedAt]
       properties:
-        tweetId:
-          type: string
-          pattern: '^[0-9]{1,32}$'
-        text:
-          type: string
-          minLength: 1
-          maxLength: 10000
-        authorDisplayName:
-          type: string
-        authorHandle:
-          type: [string, 'null']
-        originalUrl:
-          type: string
-          format: uri
-        notificationType:
-          type: [string, 'null']
-        sourceTag:
-          type: [string, 'null']
-        notifiedAt:
-          type: [string, 'null']
-          format: date-time
-        receivedAt:
-          type: string
-          format: date-time
-    AcceptedTweet:
-      type: object
-      additionalProperties: false
-      required: [status, duplicate, tweet]
-      properties:
-        status:
-          const: accepted
-        duplicate:
-          type: boolean
-        tweet:
-          $ref: '#/components/schemas/TweetContent'
-    IgnoredNotification:
-      type: object
-      additionalProperties: false
-      required: [status, reason]
-      properties:
-        status:
-          const: ignored
-        reason:
-          const: not_a_tweet_notification
+        tweetId: { type: string, pattern: '^[0-9]{1,32}$' }
+        text: { type: string, minLength: 1, maxLength: 10000 }
+        authorDisplayName: { type: string }
+        authorHandle: { type: [string, 'null'] }
+        originalUrl: { type: string, format: uri }
+        notificationType: { type: [string, 'null'] }
+        sourceTag: { type: [string, 'null'] }
+        notifiedAt: { type: [string, 'null'], format: date-time }
+        receivedAt: { type: string, format: date-time }
     ErrorResponse:
       type: object
       required: [statusCode, message]
       properties:
-        statusCode:
-          type: integer
+        statusCode: { type: integer }
         message:
           oneOf:
-            - type: string
-            - type: array
-              items:
-                type: string
-        error:
-          type: string
+            - { type: string }
+            - { type: array, items: { type: string } }
+        error: { type: string }
   responses:
     BadRequest:
       description: 入力が不正
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
     Unauthorized:
-      description: 認証または送信元が不正
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
+      description: 認証が不正または期限切れ
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+    Conflict:
+      description: 既に登録済み
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+    TooManyRequests:
+      description: 認証試行回数が上限を超過
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
     ServiceUnavailable:
       description: 外部連携または設定が利用不可
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }

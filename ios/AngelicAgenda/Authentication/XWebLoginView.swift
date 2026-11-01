@@ -14,9 +14,17 @@ struct XWebLoginView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("キャンセル") { dismiss() }
+                        Button("キャンセル") {
+                            Task {
+                                await XLoginWebView.clearXWebsiteData()
+                                dismiss()
+                            }
+                        }
                     }
                 }
+        }
+        .onDisappear {
+            Task { await XLoginWebView.clearXWebsiteData() }
         }
     }
 }

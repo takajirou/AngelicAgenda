@@ -28,7 +28,7 @@ final class TweetContentClientTests: XCTestCase {
             XCTAssertEqual(request.httpMethod, "GET")
             XCTAssertEqual(request.url?.path, "/tweets")
             XCTAssertEqual(request.url?.query, "limit=50")
-            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer setup-token")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer session-token")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
 
             let response = try XCTUnwrap(
@@ -45,7 +45,7 @@ final class TweetContentClientTests: XCTestCase {
 
         let tweets = try await subject.fetchLatest(
             baseURL: try XCTUnwrap(URL(string: "https://agenda-api.example.com")),
-            setupToken: " setup-token ",
+            authToken: " session-token ",
             limit: 50
         )
 
@@ -76,7 +76,7 @@ final class TweetContentClientTests: XCTestCase {
         do {
             _ = try await subject.fetchLatest(
                 baseURL: try XCTUnwrap(URL(string: "https://agenda-api.example.com")),
-                setupToken: "setup-token",
+                authToken: "session-token",
                 limit: 50
             )
             XCTFail("HTTPエラーが返る必要があります")
@@ -102,7 +102,7 @@ final class TweetContentClientTests: XCTestCase {
         do {
             _ = try await subject.fetchLatest(
                 baseURL: try XCTUnwrap(URL(string: "https://agenda-api.example.com")),
-                setupToken: "setup-token",
+                authToken: "session-token",
                 limit: 50
             )
             XCTFail("不正なデータを拒否する必要があります")

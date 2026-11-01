@@ -1,2 +1,1 @@
-ANGELIC_SETUP_TOKEN =
-#include? "Secrets.xcconfig"
+// 共通シークレットはアプリへ埋め込まない。
