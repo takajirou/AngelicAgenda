@@ -8,7 +8,9 @@ RUN apt-get update \
 
 WORKDIR /source
 COPY patches/angelic-angel-webhook-safety.patch /tmp/angelic-angel-webhook-safety.patch
-RUN git clone --filter=blob:none https://github.com/sh1ma/Angelic-Angel.git . \
+# Windows runnerのcheckout設定に依存せず、Linux側で適用可能な改行に揃える。
+RUN sed -i 's/\r$//' /tmp/angelic-angel-webhook-safety.patch \
+    && git clone --filter=blob:none https://github.com/sh1ma/Angelic-Angel.git . \
     && git checkout --detach "${ANGELIC_ANGEL_REF}" \
     && git apply --check /tmp/angelic-angel-webhook-safety.patch \
     && git apply /tmp/angelic-angel-webhook-safety.patch \
