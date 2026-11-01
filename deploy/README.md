@@ -148,10 +148,13 @@ GitHubリポジトリの「Settings > Environments」で`production` environment
 
 1. lint、単体テスト、E2Eテスト、ビルド
 2. GitHub SecretsからCompose用のシークレットファイルを作成
-3. バックエンドイメージをビルドし、Composeサービスを更新
-4. コンテナのhealthcheckと公開`/health`を確認
+3. 既存データを保持したままPostgreSQLユーザーのパスワードを現在のSecretへ同期
+4. バックエンドイメージをビルドし、Composeサービスを更新
+5. コンテナのhealthcheckと公開`/health`を確認
 
 失敗時は、通知本文やCookieを出さない範囲でコンテナ状態と直近100行のログをActionsへ出力します。
+
+`POSTGRES_PASSWORD`を変更しても`postgres_data` volumeは削除されません。自動デプロイ時にDB内の`app`ユーザーへ新しい値を反映するため、保存済みのツイート内容を維持したままSecretを更新できます。
 
 ## 運用
 

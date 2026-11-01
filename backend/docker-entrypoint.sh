@@ -13,7 +13,11 @@ if [ -n "${POSTGRES_PASSWORD_FILE:-}" ]; then
     exit 1
   fi
 
-  export DATABASE_URL="postgres://app:${postgres_password}@database:5432/app"
+  encoded_postgres_password=$(
+    printf '%s' "$postgres_password" \
+      | node -e "const fs = require('node:fs'); process.stdout.write(encodeURIComponent(fs.readFileSync(0, 'utf8')))"
+  )
+  export DATABASE_URL="postgres://app:${encoded_postgres_password}@database:5432/app"
 fi
 
 exec "$@"

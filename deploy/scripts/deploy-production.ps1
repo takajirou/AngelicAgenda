@@ -51,6 +51,12 @@ Assert-NativeCommandSucceeded 'Docker Compose configuration validation'
 docker compose -f $composeFile build backend
 Assert-NativeCommandSucceeded 'Backend image build'
 
+docker compose -f $composeFile up --detach --wait --wait-timeout 120 database
+Assert-NativeCommandSucceeded 'Database startup'
+
+docker compose -f $composeFile exec -T --user postgres database sh /usr/local/share/angelic-agenda/sync-postgres-password.sh
+Assert-NativeCommandSucceeded 'PostgreSQL password synchronization'
+
 docker compose -f $composeFile up --detach --remove-orphans --wait --wait-timeout 300
 Assert-NativeCommandSucceeded 'Production service update'
 

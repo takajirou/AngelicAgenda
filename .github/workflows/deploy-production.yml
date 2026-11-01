@@ -100,4 +100,4 @@ jobs:
         shell: powershell -ExecutionPolicy Bypass -NoLogo -NoProfile -NonInteractive -Command ". '{0}'"
         run: |
           docker compose -f deploy\compose.production.yml ps
-          docker compose -f deploy\compose.production.yml logs --no-color --tail 100 backend cloudflared
+          docker compose -f deploy\compose.production.yml logs --no-color --tail 100 database backend cloudflared
