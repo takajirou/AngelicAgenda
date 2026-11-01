@@ -1,0 +1,45 @@
+diff --git a/src/error.rs b/src/error.rs
+index 6ba681a..54f7731 100644
+--- a/src/error.rs
++++ b/src/error.rs
+@@ -17,6 +17,9 @@ pub enum AngelicAngelError {
+     #[error("decryption error: {0}")]
+     Decryption(String),
+ 
++    #[error("webhook error: {0}")]
++    Webhook(String),
++
+     #[error("ECE error: {0}")]
+     #[allow(dead_code)]
+     Ece(String),
+diff --git a/src/listener.rs b/src/listener.rs
+index 4e24b7f..e015bae 100644
+--- a/src/listener.rs
++++ b/src/listener.rs
+@@ -246,7 +246,7 @@ async fn handle_notification_data(
+     let payload: serde_json::Value =
+         serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({ "raw": text }));
+ 
+-    tracing::info!(payload = %payload, "notification decrypted");
++    tracing::info!("notification decrypted");
+ 
+     send_to_webhook(&payload).await?;
+ 
+@@ -264,11 +264,10 @@ async fn send_to_webhook(payload: &serde_json::Value) -> Result<()> {
+
+     let response = client.post(&webhook_url).json(payload).send().await?;
+
+     if !response.status().is_success() {
+         let status = response.status();
+-        let error_text = response
+-            .text()
+-            .await
+-            .unwrap_or_else(|_| String::from("failed to read response body"));
+-        tracing::warn!(status = %status, body = %error_text, "webhook request failed");
++        tracing::warn!(status = %status, "webhook request failed");
++        return Err(AngelicAngelError::Webhook(format!(
++            "webhook returned HTTP {}", status
++        )));
+     } else {
+         tracing::info!(status = %response.status(), "webhook request succeeded");
+     }

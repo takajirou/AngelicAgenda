@@ -95,7 +95,17 @@ export class AngelicAngelService implements OnModuleInit, OnModuleDestroy {
       if (!webhookEndpoint) return false;
       try {
         const url = new URL(webhookEndpoint);
-        return url.protocol === 'https:' || url.protocol === 'http:';
+        return (
+          url.protocol === 'http:' &&
+          (url.hostname === '127.0.0.1' ||
+            url.hostname === 'localhost' ||
+            url.hostname === '[::1]') &&
+          url.pathname === '/webhooks/x' &&
+          !url.username &&
+          !url.password &&
+          !url.search &&
+          !url.hash
+        );
       } catch {
         return false;
       }

@@ -7,8 +7,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /source
+COPY patches/angelic-angel-webhook-safety.patch /tmp/angelic-angel-webhook-safety.patch
 RUN git clone --filter=blob:none https://github.com/sh1ma/Angelic-Angel.git . \
     && git checkout --detach "${ANGELIC_ANGEL_REF}" \
+    && git apply --check /tmp/angelic-angel-webhook-safety.patch \
+    && git apply /tmp/angelic-angel-webhook-safety.patch \
     && cargo build --release --locked
 
 FROM node:22-bookworm-slim AS backend-builder

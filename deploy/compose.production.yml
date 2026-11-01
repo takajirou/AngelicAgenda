@@ -13,7 +13,7 @@ services:
       ANGELIC_SETUP_TOKEN_FILE: /run/secrets/angelic_setup_token
       ANGELIC_ANGEL_BINARY_PATH: /usr/local/bin/angelic-angel
       ANGELIC_ANGEL_CONFIG_PATH: /var/lib/angelic-angel/angelic-angel.toml
-      WEBHOOK_ENDPOINT: ${WEBHOOK_ENDPOINT:?WEBHOOK_ENDPOINT is required}
+      WEBHOOK_ENDPOINT: http://127.0.0.1:3000/webhooks/x
     expose:
       - "3000"
     volumes:

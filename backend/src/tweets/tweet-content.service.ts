@@ -1,0 +1,120 @@
+import { Injectable } from '@nestjs/common';
+import type { XNotificationWebhookDto } from './tweet-content.dto.js';
+import {
+  serializeTweetContent,
+  type StoredTweetContent,
+  type TweetContent,
+  type TweetIngestionResult,
+} from './tweet-content.model.js';
+import { TweetContentRepository } from './tweet-content.repository.js';
+
+const allowedXHosts = new Set([
+  'x.com',
+  'www.x.com',
+  'twitter.com',
+  'www.twitter.com',
+  'mobile.twitter.com',
+]);
+
+interface TweetReference {
+  authorHandle: string | null;
+  tweetId: string;
+}
+
+@Injectable()
+export class TweetContentService {
+  constructor(private readonly repository: TweetContentRepository) {}
+
+  async ingest(
+    payload: XNotificationWebhookDto,
+  ): Promise<TweetIngestionResult> {
+    const text =
+      this.nonEmpty(payload.data?.body) ?? this.nonEmpty(payload.body);
+    const authorDisplayName =
+      this.nonEmpty(payload.data?.title) ?? this.nonEmpty(payload.title);
+    const uri = payload.data?.uri;
+    const reference = uri ? this.parseTweetReference(uri) : undefined;
+
+    if (!text || !authorDisplayName || !uri || !reference) {
+      return { status: 'ignored', reason: 'not_a_tweet_notification' };
+    }
+
+    const tweet: TweetContent = {
+      tweetId: reference.tweetId,
+      text,
+      authorDisplayName,
+      authorHandle: reference.authorHandle,
+      originalUrl: `https://x.com/i/web/status/${reference.tweetId}`,
+      notificationType: this.nonEmpty(payload.data?.type) ?? null,
+      sourceTag:
+        this.nonEmpty(payload.data?.tag) ?? this.nonEmpty(payload.tag) ?? null,
+      notifiedAt: this.parseTimestamp(payload.timestamp),
+      receivedAt: new Date(),
+    };
+
+    const saved = await this.repository.save(
+      tweet,
+      payload as Readonly<Record<string, unknown>>,
+    );
+    return {
+      status: 'accepted',
+      duplicate: saved.duplicate,
+      tweet: serializeTweetContent(saved.tweet),
+    };
+  }
+
+  async findLatest(limit: number): Promise<StoredTweetContent[]> {
+    const tweets = await this.repository.findLatest(limit);
+    return tweets.map((tweet) => serializeTweetContent(tweet));
+  }
+
+  private nonEmpty(value: string | undefined): string | undefined {
+    const trimmed = value?.trim();
+    return trimmed ? trimmed : undefined;
+  }
+
+  private parseTweetReference(uri: string): TweetReference | undefined {
+    let url: URL;
+    try {
+      url = new URL(uri);
+    } catch {
+      return undefined;
+    }
+
+    if (url.protocol !== 'https:' || !allowedXHosts.has(url.hostname)) {
+      return undefined;
+    }
+
+    const segments = url.pathname.split('/').filter(Boolean);
+    const statusIndex = segments.indexOf('status');
+    const tweetId = statusIndex >= 0 ? segments[statusIndex + 1] : undefined;
+    if (!tweetId || !/^\d{1,32}$/.test(tweetId)) {
+      return undefined;
+    }
+
+    const firstSegment = segments[0];
+    const authorHandle =
+      statusIndex === 1 &&
+      firstSegment !== 'i' &&
+      /^[A-Za-z0-9_]{1,15}$/.test(firstSegment)
+        ? firstSegment
+        : null;
+    return { authorHandle, tweetId };
+  }
+
+  private parseTimestamp(timestamp: number | undefined): Date | null {
+    if (timestamp === undefined) return null;
+
+    const milliseconds =
+      timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp;
+    const date = new Date(milliseconds);
+    if (Number.isNaN(date.getTime())) return null;
+
+    const earliestReasonableDate = Date.UTC(2006, 0, 1);
+    const latestReasonableDate = Date.now() + 24 * 60 * 60 * 1000;
+    return date.getTime() >= earliestReasonableDate &&
+      date.getTime() <= latestReasonableDate
+      ? date
+      : null;
+  }
+}
