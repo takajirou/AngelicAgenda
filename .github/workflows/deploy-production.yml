@@ -63,7 +63,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Prepare deployment secrets
-        shell: pwsh
+        shell: powershell
         env:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           ANGELIC_SETUP_TOKEN: ${{ secrets.ANGELIC_SETUP_TOKEN }}
@@ -90,14 +90,14 @@ jobs:
           }
 
       - name: Deploy and verify
-        shell: pwsh
+        shell: powershell
         run: >-
           ./deploy/scripts/deploy-production.ps1
           -HealthUrl "https://agenda-api.takajirou.app/health"
 
       - name: Show diagnostics after failure
         if: failure()
-        shell: pwsh
+        shell: powershell
         run: |
           docker compose -f deploy\compose.production.yml ps
           docker compose -f deploy\compose.production.yml logs --no-color --tail 100 backend cloudflared
