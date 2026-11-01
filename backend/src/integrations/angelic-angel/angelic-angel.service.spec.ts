@@ -42,7 +42,7 @@ describe('AngelicAngelService', () => {
     await chmod(binaryPath, 0o700);
     process.env.ANGELIC_ANGEL_BINARY_PATH = binaryPath;
     process.env.ANGELIC_ANGEL_CONFIG_PATH = configPath;
-    process.env.WEBHOOK_ENDPOINT = 'https://agenda.example.com/webhooks/x';
+    process.env.WEBHOOK_ENDPOINT = 'http://127.0.0.1:3000/webhooks/x';
     service = new AngelicAngelService();
   });
 
@@ -78,5 +78,16 @@ describe('AngelicAngelService', () => {
     ).rejects.toThrow('Angelic Angel provisioning failed');
 
     await expect(readFile(configPath, 'utf8')).resolves.toBe('previous config');
+  });
+
+  it('rejects a public webhook endpoint', async () => {
+    process.env.WEBHOOK_ENDPOINT = 'https://agenda.example.com/webhooks/x';
+
+    await expect(
+      service.provision({
+        authToken: 'a'.repeat(32),
+        ct0: 'b'.repeat(32),
+      }),
+    ).rejects.toThrow('Angelic Angel runtime is not configured');
   });
 });

@@ -7,10 +7,14 @@ import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
 import { AngelicAngelService } from './../src/integrations/angelic-angel/angelic-angel.service.js';
+import type { TweetContent } from './../src/tweets/tweet-content.model.js';
+import { TweetContentRepository } from './../src/tweets/tweet-content.repository.js';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
   const provision = vi.fn();
+  const saveTweet = vi.fn();
+  const findLatestTweets = vi.fn();
   const setupToken = 's'.repeat(64);
   const originalSetupToken = process.env.ANGELIC_SETUP_TOKEN;
   const originalSetupTokenFile = process.env.ANGELIC_SETUP_TOKEN_FILE;
@@ -21,6 +25,8 @@ describe('AppController (e2e)', () => {
     })
       .overrideProvider(AngelicAngelService)
       .useValue({ provision })
+      .overrideProvider(TweetContentRepository)
+      .useValue({ save: saveTweet, findLatest: findLatestTweets })
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -33,6 +39,13 @@ describe('AppController (e2e)', () => {
     );
     process.env.ANGELIC_SETUP_TOKEN = setupToken;
     provision.mockReset();
+    saveTweet.mockReset();
+    findLatestTweets.mockReset();
+    saveTweet.mockImplementation(async (tweet: TweetContent) => ({
+      duplicate: false,
+      tweet,
+    }));
+    findLatestTweets.mockResolvedValue([]);
     await app.init();
   });
 
@@ -95,6 +108,94 @@ describe('AppController (e2e)', () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  it('/webhooks/x extracts and stores tweet content', async () => {
+    await request(app.getHttpServer())
+      .post('/webhooks/x')
+      .send({
+        title: '公式アカウント',
+        body: '予約販売は11月1日までです',
+        timestamp: 1_793_273_400_000,
+        tag: 'tweet_123',
+        data: {
+          type: 'tweet',
+          uri: 'https://x.com/official/status/123',
+          title: '公式アカウント',
+          body: '予約販売は11月1日までです',
+          tag: 'tweet_123',
+        },
+      })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          status: 'accepted',
+          duplicate: false,
+          tweet: {
+            tweetId: '123',
+            text: '予約販売は11月1日までです',
+            authorHandle: 'official',
+            originalUrl: 'https://x.com/i/web/status/123',
+          },
+        });
+      });
+
+    expect(saveTweet).toHaveBeenCalledOnce();
+  });
+
+  it('/webhooks/x rejects unknown payload fields', () => {
+    return request(app.getHttpServer())
+      .post('/webhooks/x')
+      .send({
+        title: '公式アカウント',
+        body: '本文',
+        data: { uri: 'https://x.com/official/status/123' },
+        unexpected: 'value',
+      })
+      .expect(400);
+  });
+
+  it('/tweets requires authentication and returns saved content', async () => {
+    findLatestTweets.mockResolvedValueOnce([
+      {
+        tweetId: '123',
+        text: '本文',
+        authorDisplayName: '公式アカウント',
+        authorHandle: 'official',
+        originalUrl: 'https://x.com/i/web/status/123',
+        notificationType: 'tweet',
+        sourceTag: 'tweet_123',
+        notifiedAt: null,
+        receivedAt: new Date('2026-10-29T12:00:00.000Z'),
+      },
+    ]);
+
+    await request(app.getHttpServer()).get('/tweets').expect(401);
+    await request(app.getHttpServer())
+      .get('/tweets?limit=10')
+      .set('Authorization', `Bearer ${setupToken}`)
+      .expect(200)
+      .expect([
+        {
+          tweetId: '123',
+          text: '本文',
+          authorDisplayName: '公式アカウント',
+          authorHandle: 'official',
+          originalUrl: 'https://x.com/i/web/status/123',
+          notificationType: 'tweet',
+          sourceTag: 'tweet_123',
+          notifiedAt: null,
+          receivedAt: '2026-10-29T12:00:00.000Z',
+        },
+      ]);
+    expect(findLatestTweets).toHaveBeenCalledWith(10);
+  });
+
+  it('/tweets validates the result limit', () => {
+    return request(app.getHttpServer())
+      .get('/tweets?limit=101')
+      .set('Authorization', `Bearer ${setupToken}`)
+      .expect(400);
   });
 
   afterEach(async () => {

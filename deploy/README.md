@@ -63,7 +63,7 @@ New-RandomHex | Set-Content -NoNewline -Encoding ascii deploy\secrets\postgres_p
 New-RandomHex | Set-Content -NoNewline -Encoding ascii deploy\secrets\angelic_setup_token
 ```
 
-`deploy\.env.production`の`WEBHOOK_ENDPOINT`を、Cloudflare Tunnelに割り当てる公開URLへ変更します。
+Webhookはバックエンドコンテナ内の`http://127.0.0.1:3000/webhooks/x`へ固定されるため、外部公開URLの設定は不要です。
 
 ## 4. Cloudflare Tunnelを作成する
 
@@ -114,9 +114,9 @@ Cloudflare Tunnelは外向き接続だけを使用するため、ルーターの
 
 ## 6. iOSアプリから接続する
 
-iOSアプリの外部サーバーURLは`https://agenda-api.takajirou.app/webhooks/x`に固定されています。`ios/Config/Secrets.xcconfig.example`を`Secrets.xcconfig`としてコピーし、`deploy\secrets\angelic_setup_token`と同じ値を`ANGELIC_SETUP_TOKEN`へ設定してからアプリをビルドします。接続画面での入力は不要です。
+iOSアプリの外部サーバーのベースURLは`https://agenda-api.takajirou.app`に固定されています。`/webhooks/x`はAngelic-Angelが通知を転送する別のエンドポイントです。`ios/Config/Secrets.xcconfig.example`を`Secrets.xcconfig`としてコピーし、`deploy\secrets\angelic_setup_token`と同じ値を`ANGELIC_SETUP_TOKEN`へ設定してからアプリをビルドします。接続画面での入力は不要です。
 
-接続が成功すると、Angelic-Angelの設定はDocker volume `angelic_angel_data`へ保存され、コンテナ再作成後も維持されます。
+接続が成功すると、Angelic-Angelの設定はDocker volume `angelic_angel_data`へ保存され、コンテナ再作成後も維持されます。受信したツイート内容はPostgreSQLの`tweet_contents`テーブルへ保存されます。
 
 ## 運用
 
@@ -157,4 +157,5 @@ docker compose --env-file deploy\.env.production -f deploy\compose.production.ym
 - PCの電源断、スリープ、回線停止中は通知を受信できません。
 - 安定したCloudflare Tunnelの公開ホスト名にはCloudflareで管理するドメインが必要です。
 - iOSアプリ本体は実機、TestFlightまたはApp Storeで配布します。
-- `WEBHOOK_ENDPOINT`の通知受信APIは別途実装が必要です。現時点のバックエンドはセッション登録とAngelic-Angel起動までを提供します。
+- Web Push通知に本文や投稿URLが含まれない場合、その通知からツイート内容は作成されません。
+- 通知は全投稿の取得や停止中の通知の回収を保証するものではありません。

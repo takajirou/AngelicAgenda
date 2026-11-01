@@ -18,12 +18,7 @@ struct XSessionProvisioningClient: XSessionProvisioningClientProtocol {
         credentials: XWebSessionCredentials,
         settings: AngelicServerSettings
     ) async throws {
-        let endpoint = settings.baseURL
-            .appendingPathComponent("integrations")
-            .appendingPathComponent("angelic-angel")
-            .appendingPathComponent("session")
-
-        var request = URLRequest(url: endpoint)
+        var request = URLRequest(url: settings.sessionProvisioningURL)
         request.httpMethod = "POST"
         request.timeoutInterval = 75
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData

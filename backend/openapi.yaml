@@ -1,0 +1,249 @@
+openapi: 3.1.0
+info:
+  title: AngelicAgenda API
+  version: 0.1.0
+  description: Angelic-AngelからX通知を受け取り、正規化したツイート内容を提供するAPI
+servers:
+  - url: https://agenda-api.takajirou.app
+paths:
+  /integrations/angelic-angel/session:
+    post:
+      summary: XセッションをAngelic-Angelへ登録する
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProvisionXSessionRequest'
+      responses:
+        '200':
+          description: 登録成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    const: registered
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /webhooks/x:
+    post:
+      summary: 復号済みX通知からツイート内容を取り込む
+      description: 同一コンテナのループバックアドレスからのみ利用できます。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/XNotification'
+      responses:
+        '200':
+          description: 取り込み結果
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/AcceptedTweet'
+                  - $ref: '#/components/schemas/IgnoredNotification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /tweets:
+    get:
+      summary: 保存済みツイート内容を取得する
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: 受信日時の降順で並んだツイート内容
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TweetContent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    ProvisionXSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [authToken, ct0]
+      properties:
+        authToken:
+          type: string
+          minLength: 20
+          maxLength: 4096
+          writeOnly: true
+        ct0:
+          type: string
+          minLength: 20
+          maxLength: 4096
+          writeOnly: true
+    XNotificationData:
+      type: object
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          maxLength: 64
+        uri:
+          type: string
+          format: uri
+          maxLength: 2048
+        title:
+          type: string
+          maxLength: 512
+        body:
+          type: string
+          maxLength: 10000
+        tag:
+          type: string
+          maxLength: 512
+        lang:
+          type: string
+          maxLength: 35
+        scribe_target:
+          type: string
+          maxLength: 128
+        impression_id:
+          type: string
+          maxLength: 256
+    XNotification:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          maxLength: 512
+        body:
+          type: string
+          maxLength: 10000
+        icon:
+          type: string
+          format: uri
+          maxLength: 2048
+        timestamp:
+          type: integer
+          minimum: 0
+        tag:
+          type: string
+          maxLength: 512
+        data:
+          $ref: '#/components/schemas/XNotificationData'
+    TweetContent:
+      type: object
+      additionalProperties: false
+      required:
+        - tweetId
+        - text
+        - authorDisplayName
+        - authorHandle
+        - originalUrl
+        - notificationType
+        - sourceTag
+        - notifiedAt
+        - receivedAt
+      properties:
+        tweetId:
+          type: string
+          pattern: '^[0-9]{1,32}$'
+        text:
+          type: string
+          minLength: 1
+          maxLength: 10000
+        authorDisplayName:
+          type: string
+        authorHandle:
+          type: [string, 'null']
+        originalUrl:
+          type: string
+          format: uri
+        notificationType:
+          type: [string, 'null']
+        sourceTag:
+          type: [string, 'null']
+        notifiedAt:
+          type: [string, 'null']
+          format: date-time
+        receivedAt:
+          type: string
+          format: date-time
+    AcceptedTweet:
+      type: object
+      additionalProperties: false
+      required: [status, duplicate, tweet]
+      properties:
+        status:
+          const: accepted
+        duplicate:
+          type: boolean
+        tweet:
+          $ref: '#/components/schemas/TweetContent'
+    IgnoredNotification:
+      type: object
+      additionalProperties: false
+      required: [status, reason]
+      properties:
+        status:
+          const: ignored
+        reason:
+          const: not_a_tweet_notification
+    ErrorResponse:
+      type: object
+      required: [statusCode, message]
+      properties:
+        statusCode:
+          type: integer
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        error:
+          type: string
+  responses:
+    BadRequest:
+      description: 入力が不正
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: 認証または送信元が不正
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: 外部連携または設定が利用不可
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
