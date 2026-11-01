@@ -33,6 +33,7 @@ describe('AngelicAngelService', () => {
         'fi',
         'if [ "$4" = "listen" ]; then',
         '  printf "%s\\n" "WebSocket connection established, listening for notifications" >&2',
+        '  [ "$FAKE_WEBHOOK_FAILURE" = "1" ] && printf "%s\\n" "webhook request failed status=400 Bad Request" >&2',
         '  trap "exit 0" TERM',
         '  while :; do sleep 1; done',
         'fi',
@@ -87,6 +88,22 @@ describe('AngelicAngelService', () => {
     ).rejects.toThrow('Angelic Angel provisioning failed');
 
     await expect(readFile(configPath, 'utf8')).resolves.toBe('previous config');
+  });
+
+  it('logs only the webhook status code when delivery fails', async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn');
+    process.env.FAKE_WEBHOOK_FAILURE = '1';
+
+    await service.provision({
+      authToken: 'a'.repeat(32),
+      ct0: 'b'.repeat(32),
+    });
+
+    await vi.waitFor(() => {
+      expect(warn).toHaveBeenCalledWith(
+        'Angelic Angel webhook delivery failed (HTTP 400)',
+      );
+    });
   });
 
   it('rejects a public webhook endpoint', async () => {

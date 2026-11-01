@@ -148,11 +148,15 @@ describe('AppController (e2e)', () => {
       .send({
         title: '公式アカウント',
         body: '本文',
-        badge: 'https://abs.twimg.com/responsive-web/client-web/icon.png',
+        icon: '/responsive-web/icon.png',
+        timestamp: 'not-a-number',
         data: {
           uri: '/official/status/123',
           iid: 'push-impression-id',
           tweet_id: '123',
+          lang: ['ja'],
+          scribe_target: { section: 'push' },
+          impression_id: 123,
         },
       })
       .expect(200)

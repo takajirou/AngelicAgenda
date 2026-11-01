@@ -1,21 +1,36 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsInt,
   IsOptional,
   IsString,
-  IsUrl,
   Max,
   MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
 
+function NormalizeOptionalString(): PropertyDecorator {
+  return Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value : undefined,
+  );
+}
+
+function NormalizeOptionalTimestamp(): PropertyDecorator {
+  return Transform(({ value }: { value: unknown }) =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : undefined,
+  );
+}
+
 export class XNotificationDataDto {
+  @NormalizeOptionalString()
   @IsOptional()
   @IsString()
   @MaxLength(64)
   type?: string;
 
+  @NormalizeOptionalString()
   @IsOptional()
   @IsString()
   @MaxLength(2048)
@@ -31,25 +46,11 @@ export class XNotificationDataDto {
   @MaxLength(10_000)
   body?: string;
 
+  @NormalizeOptionalString()
   @IsOptional()
   @IsString()
   @MaxLength(512)
   tag?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(35)
-  lang?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(128)
-  scribe_target?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(256)
-  impression_id?: string;
 }
 
 export class XNotificationWebhookDto {
@@ -63,17 +64,14 @@ export class XNotificationWebhookDto {
   @MaxLength(10_000)
   body?: string;
 
-  @IsOptional()
-  @IsUrl({ protocols: ['https'], require_protocol: true })
-  @MaxLength(2048)
-  icon?: string;
-
+  @NormalizeOptionalTimestamp()
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(Number.MAX_SAFE_INTEGER)
   timestamp?: number;
 
+  @NormalizeOptionalString()
   @IsOptional()
   @IsString()
   @MaxLength(512)

@@ -126,15 +126,6 @@ components:
         tag:
           type: string
           maxLength: 512
-        lang:
-          type: string
-          maxLength: 35
-        scribe_target:
-          type: string
-          maxLength: 128
-        impression_id:
-          type: string
-          maxLength: 256
     XNotification:
       type: object
       description: Xが追加する未使用フィールドは受信境界で除去されます。
@@ -145,13 +136,10 @@ components:
         body:
           type: string
           maxLength: 10000
-        icon:
-          type: string
-          format: uri
-          maxLength: 2048
         timestamp:
           type: integer
           minimum: 0
+          description: 不正な値は受信日時で補完するため除去されます。
         tag:
           type: string
           maxLength: 512
