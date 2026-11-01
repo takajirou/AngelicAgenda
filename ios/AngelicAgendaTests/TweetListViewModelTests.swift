@@ -16,16 +16,16 @@ final class TweetListViewModelTests: XCTestCase {
             receivedAt: Date(timeIntervalSince1970: 1_793_516_430)
         )
         let client = TweetContentClientSpy(result: .success([expectedTweet]))
-        let subject = TweetListViewModel(client: client, setupToken: "setup-token")
+        let subject = TweetListViewModel(client: client)
         let serverURL = try XCTUnwrap(URL(string: "https://agenda-api.example.com"))
 
-        await subject.load(serverURL: serverURL)
+        await subject.load(serverURL: serverURL, authToken: "session-token")
 
         XCTAssertEqual(subject.tweets, [expectedTweet])
         XCTAssertNil(subject.errorMessage)
         XCTAssertFalse(subject.isLoading)
         XCTAssertEqual(client.receivedBaseURL, serverURL)
-        XCTAssertEqual(client.receivedSetupToken, "setup-token")
+        XCTAssertEqual(client.receivedAuthToken, "session-token")
         XCTAssertEqual(client.receivedLimit, 50)
     }
 
@@ -42,12 +42,12 @@ final class TweetListViewModelTests: XCTestCase {
             receivedAt: Date(timeIntervalSince1970: 1_793_516_430)
         )
         let client = TweetContentClientSpy(result: .success([existingTweet]))
-        let subject = TweetListViewModel(client: client, setupToken: "setup-token")
+        let subject = TweetListViewModel(client: client)
         let serverURL = try XCTUnwrap(URL(string: "https://agenda-api.example.com"))
-        await subject.load(serverURL: serverURL)
+        await subject.load(serverURL: serverURL, authToken: "session-token")
         client.result = .failure(TweetContentClientError.serverError(statusCode: 503))
 
-        await subject.load(serverURL: serverURL)
+        await subject.load(serverURL: serverURL, authToken: "session-token")
 
         XCTAssertEqual(subject.tweets, [existingTweet])
         XCTAssertEqual(subject.errorMessage, "告知を取得できませんでした（HTTP 503）。")
@@ -58,9 +58,10 @@ final class TweetListViewModelTests: XCTestCase {
         let client = TweetContentClientSpy(
             result: .failure(TweetContentClientError.serverError(statusCode: 500))
         )
-        let subject = TweetListViewModel(client: client, setupToken: "setup-token")
+        let subject = TweetListViewModel(client: client)
         await subject.load(
-            serverURL: try XCTUnwrap(URL(string: "https://agenda-api.example.com"))
+            serverURL: try XCTUnwrap(URL(string: "https://agenda-api.example.com")),
+            authToken: "session-token"
         )
 
         subject.reset()
@@ -68,12 +69,26 @@ final class TweetListViewModelTests: XCTestCase {
         XCTAssertTrue(subject.tweets.isEmpty)
         XCTAssertNil(subject.errorMessage)
     }
+
+    func testUnauthorizedResponseRequiresAuthentication() async throws {
+        let client = TweetContentClientSpy(
+            result: .failure(TweetContentClientError.serverError(statusCode: 401))
+        )
+        let subject = TweetListViewModel(client: client)
+
+        await subject.load(
+            serverURL: try XCTUnwrap(URL(string: "https://agenda-api.example.com")),
+            authToken: "expired-token"
+        )
+
+        XCTAssertTrue(subject.requiresAuthentication)
+    }
 }
 
 private final class TweetContentClientSpy: TweetContentClientProtocol, @unchecked Sendable {
     var result: Result<[TweetContent], Error>
     private(set) var receivedBaseURL: URL?
-    private(set) var receivedSetupToken: String?
+    private(set) var receivedAuthToken: String?
     private(set) var receivedLimit: Int?
 
     init(result: Result<[TweetContent], Error>) {
@@ -82,11 +97,11 @@ private final class TweetContentClientSpy: TweetContentClientProtocol, @unchecke
 
     func fetchLatest(
         baseURL: URL,
-        setupToken: String,
+        authToken: String,
         limit: Int
     ) async throws -> [TweetContent] {
         receivedBaseURL = baseURL
-        receivedSetupToken = setupToken
+        receivedAuthToken = authToken
         receivedLimit = limit
         return try result.get()
     }

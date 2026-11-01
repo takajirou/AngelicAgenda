@@ -19,3 +19,7 @@ export class ProvisionXSessionDto {
 export class ProvisionXSessionResponseDto {
   status!: 'registered';
 }
+
+export class XSessionStatusResponseDto {
+  connected!: boolean;
+}

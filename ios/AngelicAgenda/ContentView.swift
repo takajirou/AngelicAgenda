@@ -6,10 +6,15 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if let connection = authentication.connection {
-                authenticatedView(connection: connection)
+            if let session = authentication.session {
+                authenticatedView(session: session)
             } else {
                 LoginView()
+            }
+        }
+        .task(id: authentication.session?.token) {
+            if authentication.session != nil {
+                await authentication.refreshXConnection()
             }
         }
         .alert(
@@ -27,18 +32,14 @@ struct ContentView: View {
         }
     }
 
-    private func authenticatedView(connection: AngelicConnection) -> some View {
-        TweetListView(
-            viewModel: tweetList,
-            connection: connection,
-            onSignOut: authentication.signOut
-        )
-    }
-}
-
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
-            .environmentObject(AuthenticationViewModel.preview(connected: true))
+    @ViewBuilder
+    private func authenticatedView(session: AppSession) -> some View {
+        if authentication.isXConnected == true {
+            TweetListView(viewModel: tweetList, session: session)
+        } else if authentication.isXConnected == false {
+            XConnectionView()
+        } else {
+            ProgressView("接続状態を確認しています")
+        }
     }
 }

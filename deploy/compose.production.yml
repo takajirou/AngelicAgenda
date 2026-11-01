@@ -10,17 +10,18 @@ services:
       NODE_ENV: production
       PORT: 3000
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-      ANGELIC_SETUP_TOKEN_FILE: /run/secrets/angelic_setup_token
+      AUTH_PEPPER_FILE: /run/secrets/auth_pepper
+      X_SESSION_ENCRYPTION_KEY_FILE: /run/secrets/x_session_encryption_key
       ANGELIC_ANGEL_BINARY_PATH: /usr/local/bin/angelic-angel
-      ANGELIC_ANGEL_CONFIG_PATH: /var/lib/angelic-angel/angelic-angel.toml
-      WEBHOOK_ENDPOINT: http://127.0.0.1:3000/webhooks/x
+      ANGELIC_ANGEL_CONFIG_DIRECTORY: /tmp/angelic-angel
+      WEBHOOK_BASE_URL: http://127.0.0.1:3000/webhooks/x/
+      MAX_ACTIVE_X_SESSIONS: 20
     expose:
       - "3000"
-    volumes:
-      - angelic_angel_data:/var/lib/angelic-angel
     secrets:
       - postgres_password
-      - angelic_setup_token
+      - auth_pepper
+      - x_session_encryption_key
     depends_on:
       database:
         condition: service_healthy
@@ -36,7 +37,7 @@ services:
       start_period: 30s
     read_only: true
     tmpfs:
-      - /tmp:size=64m,mode=1777
+      - /tmp:size=128m,mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -89,13 +90,14 @@ services:
 secrets:
   postgres_password:
     file: ./secrets/postgres_password
-  angelic_setup_token:
-    file: ./secrets/angelic_setup_token
+  auth_pepper:
+    file: ./secrets/auth_pepper
+  x_session_encryption_key:
+    file: ./secrets/x_session_encryption_key
   cloudflare_tunnel_token:
     file: ./secrets/cloudflare_tunnel_token
 
 volumes:
-  angelic_angel_data:
   postgres_data:
 
 networks:

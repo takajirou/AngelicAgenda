@@ -6,14 +6,18 @@ import { TweetContentService } from './tweet-content.service.js';
 class FakeTweetContentRepository extends TweetContentRepository {
   readonly save = vi.fn(
     async (
+      _userId: string,
       tweet: TweetContent,
       _rawPayload: Readonly<Record<string, unknown>>,
     ) => ({ duplicate: false, tweet }),
   );
-  readonly findLatest = vi.fn(async (_limit: number) => [] as TweetContent[]);
+  readonly findLatest = vi.fn(
+    async (_userId: string, _limit: number) => [] as TweetContent[],
+  );
 }
 
 describe('TweetContentService', () => {
+  const userId = '11111111-1111-4111-8111-111111111111';
   let repository: FakeTweetContentRepository;
   let service: TweetContentService;
 
@@ -42,7 +46,7 @@ describe('TweetContentService', () => {
       },
     };
 
-    const result = await service.ingest(payload);
+    const result = await service.ingest(userId, payload);
 
     expect(result).toEqual({
       status: 'accepted',
@@ -60,13 +64,14 @@ describe('TweetContentService', () => {
       },
     });
     expect(repository.save).toHaveBeenCalledWith(
+      userId,
       expect.objectContaining({ tweetId: '1234567890123456789' }),
       payload,
     );
   });
 
   it('uses top-level text and handles the generic status URL', async () => {
-    const result = await service.ingest({
+    const result = await service.ingest(userId, {
       title: '@official',
       body: '予約販売を開始しました',
       timestamp: 1_793_273_400,
@@ -87,7 +92,7 @@ describe('TweetContentService', () => {
   });
 
   it('accepts the relative status path used by X Web Push', async () => {
-    const result = await service.ingest({
+    const result = await service.ingest(userId, {
       title: '公式アカウント',
       body: 'ライブ先行受付を開始しました',
       data: {
@@ -106,7 +111,7 @@ describe('TweetContentService', () => {
   });
 
   it('falls back to top-level values when nested strings are empty', async () => {
-    const result = await service.ingest({
+    const result = await service.ingest(userId, {
       title: '公式',
       body: '受付中です',
       tag: 'tweet_21',
@@ -146,7 +151,7 @@ describe('TweetContentService', () => {
   ] satisfies XNotificationWebhookDto[])(
     'ignores a payload that does not contain tweet content',
     async (payload) => {
-      await expect(service.ingest(payload)).resolves.toEqual({
+      await expect(service.ingest(userId, payload)).resolves.toEqual({
         status: 'ignored',
         reason: 'not_a_tweet_notification',
       });
@@ -155,12 +160,12 @@ describe('TweetContentService', () => {
   );
 
   it('returns the stored row when the notification is a duplicate', async () => {
-    repository.save.mockImplementationOnce(async (tweet) => ({
+    repository.save.mockImplementationOnce(async (_userId, tweet) => ({
       duplicate: true,
       tweet: { ...tweet, text: '最初に保存した本文' },
     }));
 
-    const result = await service.ingest({
+    const result = await service.ingest(userId, {
       title: '公式',
       body: '再送された本文',
       data: { uri: 'https://x.com/official/status/123' },
@@ -188,13 +193,13 @@ describe('TweetContentService', () => {
       },
     ]);
 
-    await expect(service.findLatest(10)).resolves.toEqual([
+    await expect(service.findLatest(userId, 10)).resolves.toEqual([
       expect.objectContaining({
         tweetId: '123',
         notifiedAt: null,
         receivedAt: '2026-10-29T10:00:00.000Z',
       }),
     ]);
-    expect(repository.findLatest).toHaveBeenCalledWith(10);
+    expect(repository.findLatest).toHaveBeenCalledWith(userId, 10);
   });
 });

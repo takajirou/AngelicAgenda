@@ -28,6 +28,7 @@ export class TweetContentService {
   constructor(private readonly repository: TweetContentRepository) {}
 
   async ingest(
+    userId: string,
     payload: XNotificationWebhookDto,
   ): Promise<TweetIngestionResult> {
     const text =
@@ -58,6 +59,7 @@ export class TweetContentService {
     };
 
     const saved = await this.repository.save(
+      userId,
       tweet,
       payload as Readonly<Record<string, unknown>>,
     );
@@ -73,8 +75,8 @@ export class TweetContentService {
     };
   }
 
-  async findLatest(limit: number): Promise<StoredTweetContent[]> {
-    const tweets = await this.repository.findLatest(limit);
+  async findLatest(userId: string, limit: number): Promise<StoredTweetContent[]> {
+    const tweets = await this.repository.findLatest(userId, limit);
     return tweets.map((tweet) => serializeTweetContent(tweet));
   }
 

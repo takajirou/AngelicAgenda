@@ -38,9 +38,7 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev \
-    && npm cache clean --force \
-    && mkdir -p /var/lib/angelic-angel \
-    && chown node:node /var/lib/angelic-angel
+    && npm cache clean --force
 
 COPY --from=backend-builder /app/dist ./dist
 COPY --from=angelic-angel-builder /source/target/release/angelic-angel /usr/local/bin/angelic-angel

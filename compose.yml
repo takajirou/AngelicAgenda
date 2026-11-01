@@ -2,19 +2,18 @@ services:
   backend:
     build:
       context: ./backend
-    command: npm run start:dev
     ports:
       - "3000:3000"
     environment:
       DATABASE_URL: postgres://app:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@database:5432/app
-      ANGELIC_SETUP_TOKEN: ${ANGELIC_SETUP_TOKEN:?ANGELIC_SETUP_TOKEN is required}
+      AUTH_PEPPER: ${AUTH_PEPPER:?AUTH_PEPPER is required}
+      X_SESSION_ENCRYPTION_KEY: ${X_SESSION_ENCRYPTION_KEY:?X_SESSION_ENCRYPTION_KEY is required}
       ANGELIC_ANGEL_BINARY_PATH: /usr/local/bin/angelic-angel
-      ANGELIC_ANGEL_CONFIG_PATH: /var/lib/angelic-angel/angelic-angel.toml
-      WEBHOOK_ENDPOINT: http://127.0.0.1:3000/webhooks/x
-    volumes:
-      - ./backend:/app
-      - backend_node_modules:/app/node_modules
-      - angelic_angel_data:/var/lib/angelic-angel
+      ANGELIC_ANGEL_CONFIG_DIRECTORY: /tmp/angelic-angel
+      WEBHOOK_BASE_URL: http://127.0.0.1:3000/webhooks/x/
+      MAX_ACTIVE_X_SESSIONS: 20
+    tmpfs:
+      - /tmp:size=128m,mode=1777
     depends_on:
       database:
         condition: service_healthy
@@ -36,6 +35,4 @@ services:
       retries: 10
 
 volumes:
-  backend_node_modules:
-  angelic_angel_data:
   postgres_data:

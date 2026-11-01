@@ -13,7 +13,8 @@ $composeFile = Join-Path $deployDirectory 'compose.production.yml'
 $secretDirectory = Join-Path $deployDirectory 'secrets'
 $requiredSecretFiles = @{
     postgres_password = 32
-    angelic_setup_token = 32
+    auth_pepper = 32
+    x_session_encryption_key = 64
     cloudflare_tunnel_token = 20
 }
 
@@ -26,6 +27,13 @@ foreach ($entry in $requiredSecretFiles.GetEnumerator()) {
     if ((Get-Item -LiteralPath $secretPath).Length -lt $entry.Value) {
         throw "Deployment secret file is shorter than required: $($entry.Key)"
     }
+}
+
+$encryptionKey = [System.IO.File]::ReadAllText(
+    (Join-Path $secretDirectory 'x_session_encryption_key')
+).Trim()
+if ($encryptionKey -notmatch '^[0-9a-fA-F]{64}$') {
+    throw 'x_session_encryption_key must contain exactly 64 hexadecimal characters.'
 }
 
 function Assert-NativeCommandSucceeded {
@@ -83,6 +91,21 @@ for ($attempt = 1; $attempt -le 10; $attempt++) {
 
 if (-not $healthCheckSucceeded) {
     throw "Health check failed after 10 attempts: $($lastHealthError.Exception.Message)"
+}
+
+# 旧単一ユーザー構成のvolumeには平文のX Cookieが残るため、
+# 新構成の起動確認後にComposeラベルで対象を限定して削除する。
+$legacyVolumes = @(
+    docker volume ls --quiet `
+        --filter 'label=com.docker.compose.project=angelic-agenda' `
+        --filter 'label=com.docker.compose.volume=angelic_angel_data'
+)
+Assert-NativeCommandSucceeded 'Legacy Angelic Angel volume lookup'
+foreach ($legacyVolume in $legacyVolumes) {
+    if (-not [string]::IsNullOrWhiteSpace($legacyVolume)) {
+        docker volume rm $legacyVolume
+        Assert-NativeCommandSucceeded 'Legacy Angelic Angel volume removal'
+    }
 }
 
 Write-Host 'Production deployment completed successfully.'

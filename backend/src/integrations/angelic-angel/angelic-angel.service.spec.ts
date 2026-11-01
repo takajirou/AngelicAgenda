@@ -9,19 +9,24 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
+import { AuthRepository } from '../../auth/auth.repository.js';
+import { SecretService } from '../../security/secret.service.js';
 import { AngelicAngelService } from './angelic-angel.service.js';
+import { XSessionCipherService } from './x-session-cipher.service.js';
 
 describe('AngelicAngelService', () => {
   let directory: string;
   let binaryPath: string;
   let configPath: string;
   let service: AngelicAngelService;
+  let encryptedConfig: string | undefined;
+  const userId = '11111111-1111-4111-8111-111111111111';
   const originalEnvironment = { ...process.env };
 
   beforeEach(async () => {
     directory = await mkdtemp(join(tmpdir(), 'angelic-angel-test-'));
     binaryPath = join(directory, 'fake-angelic-angel');
-    configPath = join(directory, 'angelic-angel.toml');
+    configPath = join(directory, `${userId}.toml`);
     await writeFile(
       binaryPath,
       [
@@ -44,13 +49,31 @@ describe('AngelicAngelService', () => {
     );
     await chmod(binaryPath, 0o700);
     process.env.ANGELIC_ANGEL_BINARY_PATH = binaryPath;
-    process.env.ANGELIC_ANGEL_CONFIG_PATH = configPath;
-    process.env.WEBHOOK_ENDPOINT = 'http://127.0.0.1:3000/webhooks/x';
-    service = new AngelicAngelService();
+    process.env.ANGELIC_ANGEL_CONFIG_DIRECTORY = directory;
+    process.env.WEBHOOK_BASE_URL = 'http://127.0.0.1:3000/webhooks/x/';
+    process.env.X_SESSION_ENCRYPTION_KEY = '1'.repeat(64);
+    encryptedConfig = undefined;
+    const repository = {
+      listXSessions: vi.fn(async () => []),
+      countXSessions: vi.fn(async () => 0),
+      findXSession: vi.fn(async () =>
+        encryptedConfig
+          ? { userId, encryptedConfig, connectedAt: new Date() }
+          : undefined,
+      ),
+      upsertXSession: vi.fn(async (_userId: string, value: string) => {
+        encryptedConfig = value;
+      }),
+      deleteXSession: vi.fn(async () => {
+        encryptedConfig = undefined;
+      }),
+    } as unknown as AuthRepository;
+    const cipher = new XSessionCipherService(new SecretService());
+    service = new AngelicAngelService(repository, cipher);
   });
 
   afterEach(async () => {
-    service.onModuleDestroy();
+    await service.onModuleDestroy();
     process.env = { ...originalEnvironment };
     await rm(directory, { recursive: true, force: true });
   });
@@ -58,7 +81,7 @@ describe('AngelicAngelService', () => {
   it('registers the session, stores a private config, and starts listening', async () => {
     const log = vi.spyOn(Logger.prototype, 'log');
 
-    await service.provision({
+    await service.provision(userId, {
       authToken: 'a'.repeat(32),
       ct0: 'b'.repeat(32),
     });
@@ -69,6 +92,7 @@ describe('AngelicAngelService', () => {
     expect(content).toContain(`ct0 = "${'b'.repeat(32)}"`);
     expect(content).toContain('[registration]');
     expect(mode).toBe(0o600);
+    expect(encryptedConfig).not.toContain('a'.repeat(32));
     await vi.waitFor(() => {
       expect(log).toHaveBeenCalledWith(
         'Angelic Angel AutoPush connection established',
@@ -81,7 +105,7 @@ describe('AngelicAngelService', () => {
     process.env.FAKE_REGISTER_FAIL = '1';
 
     await expect(
-      service.provision({
+      service.provision(userId, {
         authToken: 'a'.repeat(32),
         ct0: 'b'.repeat(32),
       }),
@@ -94,7 +118,7 @@ describe('AngelicAngelService', () => {
     const warn = vi.spyOn(Logger.prototype, 'warn');
     process.env.FAKE_WEBHOOK_FAILURE = '1';
 
-    await service.provision({
+    await service.provision(userId, {
       authToken: 'a'.repeat(32),
       ct0: 'b'.repeat(32),
     });
@@ -106,11 +130,24 @@ describe('AngelicAngelService', () => {
     });
   });
 
+  it('stops the listener and deletes the stored session on disconnect', async () => {
+    await service.provision(userId, {
+      authToken: 'a'.repeat(32),
+      ct0: 'b'.repeat(32),
+    });
+
+    await service.disconnect(userId);
+
+    await expect(readFile(configPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(encryptedConfig).toBeUndefined();
+    await expect(service.isConnected(userId)).resolves.toBe(false);
+  });
+
   it('rejects a public webhook endpoint', async () => {
-    process.env.WEBHOOK_ENDPOINT = 'https://agenda.example.com/webhooks/x';
+    process.env.WEBHOOK_BASE_URL = 'https://agenda.example.com/webhooks/x/';
 
     await expect(
-      service.provision({
+      service.provision(userId, {
         authToken: 'a'.repeat(32),
         ct0: 'b'.repeat(32),
       }),

@@ -3,13 +3,13 @@ import Foundation
 protocol TweetContentClientProtocol: Sendable {
     func fetchLatest(
         baseURL: URL,
-        setupToken: String,
+        authToken: String,
         limit: Int
     ) async throws -> [TweetContent]
 }
 
 enum TweetContentClientError: LocalizedError, Equatable {
-    case missingSetupToken
+    case missingAuthToken
     case invalidLimit
     case invalidResponse
     case serverError(statusCode: Int)
@@ -17,8 +17,8 @@ enum TweetContentClientError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .missingSetupToken:
-            "セットアップトークンが設定されていません。アプリを再ビルドしてください。"
+        case .missingAuthToken:
+            "ログイン情報がありません。もう一度ログインしてください。"
         case .invalidLimit:
             "取得件数の指定が不正です。"
         case .invalidResponse:
@@ -40,12 +40,12 @@ struct TweetContentClient: TweetContentClientProtocol {
 
     func fetchLatest(
         baseURL: URL,
-        setupToken: String,
+        authToken: String,
         limit: Int = 50
     ) async throws -> [TweetContent] {
-        let trimmedToken = setupToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedToken = authToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedToken.isEmpty else {
-            throw TweetContentClientError.missingSetupToken
+            throw TweetContentClientError.missingAuthToken
         }
         guard (1...100).contains(limit) else {
             throw TweetContentClientError.invalidLimit

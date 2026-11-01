@@ -7,192 +7,228 @@ struct XWebSessionCredentials: Equatable, Sendable {
 }
 
 enum AngelicServerConfiguration {
-    private static let setupTokenInfoDictionaryKey = "AngelicSetupToken"
-
     static let baseURL: URL = {
         guard let url = URL(string: "https://agenda-api.takajirou.app") else {
             preconditionFailure("固定された外部サーバーURLが不正です。")
         }
         return url
     }()
-
-    static var setupToken: String {
-        Bundle.main.object(forInfoDictionaryKey: setupTokenInfoDictionaryKey) as? String ?? ""
-    }
 }
 
-struct AngelicServerSettings: Equatable, Sendable {
-    let baseURL: URL
-    let setupToken: String
-
-    var sessionProvisioningURL: URL {
-        baseURL
-            .appendingPathComponent("integrations")
-            .appendingPathComponent("angelic-angel")
-            .appendingPathComponent("session")
-    }
+struct AppUser: Codable, Equatable, Sendable {
+    let id: String
+    let email: String
 }
 
-struct AngelicConnection: Codable, Equatable, Sendable {
-    let serverURL: URL
-    let connectedAt: Date
+struct AppSession: Codable, Equatable, Sendable {
+    let token: String
+    let expiresAt: Date
+    let user: AppUser
 }
 
 enum AuthenticationError: LocalizedError, Equatable {
-    case missingSetupToken
-    case invalidSetupToken
-    case missingCookies
+    case invalidEmail
+    case invalidPassword
     case invalidResponse
     case serverError(statusCode: Int, message: String?)
-    case connectionReadFailed
-    case connectionSaveFailed
-    case connectionDeleteFailed
+    case sessionReadFailed
+    case sessionSaveFailed
+    case sessionDeleteFailed
 
     var errorDescription: String? {
         switch self {
-        case .missingSetupToken:
-            "Build Settingsにセットアップトークンが設定されていません。Secrets.xcconfigを確認してください。"
-        case .invalidSetupToken:
-            "セットアップトークンは空白を含まない32〜512文字で入力してください。"
-        case .missingCookies:
-            "Xのログイン情報を確認できませんでした。Xへのログイン完了後にもう一度お試しください。"
+        case .invalidEmail:
+            "メールアドレスを確認してください。"
+        case .invalidPassword:
+            "パスワードは12〜128文字で入力してください。"
         case .invalidResponse:
-            "外部サーバーから正しい応答を受け取れませんでした。"
+            "サーバーから正しい応答を受け取れませんでした。"
         case .serverError(_, let message):
-            message ?? "外部サーバーへの接続に失敗しました。"
-        case .connectionReadFailed:
-            "保存済みの接続情報を読み込めませんでした。"
-        case .connectionSaveFailed:
-            "接続状態を安全に保存できませんでした。"
-        case .connectionDeleteFailed:
-            "接続情報を削除できませんでした。"
+            message ?? "サーバーへの接続に失敗しました。"
+        case .sessionReadFailed:
+            "保存済みのログイン情報を読み込めませんでした。"
+        case .sessionSaveFailed:
+            "ログイン情報を安全に保存できませんでした。"
+        case .sessionDeleteFailed:
+            "ログイン情報を削除できませんでした。"
         }
     }
 }
 
 @MainActor
 final class AuthenticationViewModel: ObservableObject {
-    @Published private(set) var connection: AngelicConnection?
-    @Published private(set) var isConnecting = false
+    @Published private(set) var session: AppSession?
+    @Published private(set) var isXConnected: Bool?
+    @Published private(set) var isWorking = false
     @Published private(set) var errorMessage: String?
 
-    private let client: XSessionProvisioningClientProtocol
-    private let connectionStore: AngelicConnectionStoreProtocol
+    private let authClient: AppAuthClientProtocol
+    private let xClient: XSessionProvisioningClientProtocol
+    private let sessionStore: AppSessionStoreProtocol
 
     convenience init() {
         self.init(
-            client: XSessionProvisioningClient(),
-            connectionStore: KeychainAngelicConnectionStore()
+            authClient: AppAuthClient(),
+            xClient: XSessionProvisioningClient(),
+            sessionStore: KeychainAppSessionStore()
         )
     }
 
     init(
-        client: XSessionProvisioningClientProtocol,
-        connectionStore: AngelicConnectionStoreProtocol
+        authClient: AppAuthClientProtocol,
+        xClient: XSessionProvisioningClientProtocol,
+        sessionStore: AppSessionStoreProtocol
     ) {
-        self.client = client
-        self.connectionStore = connectionStore
-
+        self.authClient = authClient
+        self.xClient = xClient
+        self.sessionStore = sessionStore
         do {
-            connection = try connectionStore.load()
+            let stored = try sessionStore.load()
+            if let stored, stored.expiresAt > Date() {
+                session = stored
+            } else if stored != nil {
+                try sessionStore.delete()
+            }
         } catch {
-            errorMessage = AuthenticationError.connectionReadFailed.localizedDescription
+            errorMessage = AuthenticationError.sessionReadFailed.localizedDescription
         }
     }
 
-    func validateSettings(setupToken: String) throws -> AngelicServerSettings {
-        let trimmedToken = setupToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedToken.isEmpty else {
-            throw AuthenticationError.missingSetupToken
-        }
-        guard
-            (32...512).contains(trimmedToken.count),
-            trimmedToken.unicodeScalars.allSatisfy({ scalar in
-                !CharacterSet.whitespacesAndNewlines.contains(scalar)
-                    && !CharacterSet.controlCharacters.contains(scalar)
-            })
-        else {
-            throw AuthenticationError.invalidSetupToken
-        }
-
-        return AngelicServerSettings(
-            baseURL: AngelicServerConfiguration.baseURL,
-            setupToken: trimmedToken
-        )
+    func register(email: String, password: String) async {
+        await authenticate(email: email, password: password, mode: .register)
     }
 
-    func connect(
-        credentials: XWebSessionCredentials,
-        settings: AngelicServerSettings
-    ) async -> Bool {
-        guard !isConnecting else { return false }
+    func login(email: String, password: String) async {
+        await authenticate(email: email, password: password, mode: .login)
+    }
 
-        isConnecting = true
-        errorMessage = nil
-        defer { isConnecting = false }
-
+    func refreshXConnection() async {
+        guard let session, !isWorking else { return }
+        isWorking = true
+        defer { isWorking = false }
         do {
-            try await client.provision(credentials: credentials, settings: settings)
-            let connection = AngelicConnection(serverURL: settings.baseURL, connectedAt: Date())
-            try connectionStore.save(connection)
-            self.connection = connection
+            isXConnected = try await xClient.isConnected(authToken: session.token)
+        } catch {
+            if isUnauthorized(error) {
+                clearLocalSession()
+            } else {
+                isXConnected = false
+                handle(error)
+            }
+        }
+    }
+
+    func connectX(credentials: XWebSessionCredentials) async -> Bool {
+        guard let session, !isWorking else { return false }
+        isWorking = true
+        errorMessage = nil
+        defer { isWorking = false }
+        do {
+            try await xClient.provision(credentials: credentials, authToken: session.token)
+            isXConnected = true
             return true
         } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription
-                ?? "時間をおいて、もう一度お試しください。"
+            if isUnauthorized(error) { clearLocalSession() }
+            else { handle(error) }
             return false
         }
     }
 
-    func setError(_ error: Error) {
-        errorMessage = (error as? LocalizedError)?.errorDescription
-            ?? "時間をおいて、もう一度お試しください。"
+    func disconnectX() async {
+        guard let session, !isWorking else { return }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try await xClient.disconnect(authToken: session.token)
+            isXConnected = false
+        } catch {
+            if isUnauthorized(error) { clearLocalSession() }
+            else { handle(error) }
+        }
     }
 
-    func signOut() {
+    func logout() async {
+        guard let session else { return }
+        isWorking = true
+        defer { isWorking = false }
+        try? await authClient.logout(authToken: session.token)
+        clearLocalSession()
+    }
+
+    func deleteAccount() async {
+        guard let session, !isWorking else { return }
+        isWorking = true
+        defer { isWorking = false }
         do {
-            try connectionStore.delete()
-            connection = nil
-            errorMessage = nil
+            try await authClient.deleteAccount(authToken: session.token)
+            clearLocalSession()
         } catch {
-            errorMessage = AuthenticationError.connectionDeleteFailed.localizedDescription
+            if isUnauthorized(error) { clearLocalSession() }
+            else { handle(error) }
         }
+    }
+
+    func invalidateSession() {
+        clearLocalSession()
     }
 
     func clearError() {
         errorMessage = nil
     }
 
-    static func preview(connected: Bool = true) -> AuthenticationViewModel {
-        AuthenticationViewModel(
-            client: PreviewProvisioningClient(),
-            connectionStore: PreviewConnectionStore(
-                connection: connected
-                    ? AngelicConnection(
-                        serverURL: AngelicServerConfiguration.baseURL,
-                        connectedAt: Date()
-                    )
-                    : nil
+    private func authenticate(email: String, password: String, mode: AppAuthMode) async {
+        guard !isWorking else { return }
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedEmail.contains("@") else {
+            handle(AuthenticationError.invalidEmail)
+            return
+        }
+        guard (12...128).contains(password.count) else {
+            handle(AuthenticationError.invalidPassword)
+            return
+        }
+        isWorking = true
+        errorMessage = nil
+        defer { isWorking = false }
+        do {
+            let newSession = try await authClient.authenticate(
+                email: normalizedEmail,
+                password: password,
+                mode: mode
             )
-        )
-    }
-}
-
-private struct PreviewProvisioningClient: XSessionProvisioningClientProtocol {
-    func provision(
-        credentials: XWebSessionCredentials,
-        settings: AngelicServerSettings
-    ) async throws {}
-}
-
-private final class PreviewConnectionStore: AngelicConnectionStoreProtocol {
-    private var connection: AngelicConnection?
-
-    init(connection: AngelicConnection?) {
-        self.connection = connection
+            try sessionStore.save(newSession)
+            session = newSession
+            isXConnected = nil
+        } catch {
+            handle(error)
+        }
     }
 
-    func load() throws -> AngelicConnection? { connection }
-    func save(_ connection: AngelicConnection) throws { self.connection = connection }
-    func delete() throws { connection = nil }
+    private func clearLocalSession() {
+        let deletionFailed: Bool
+        do {
+            try sessionStore.delete()
+            deletionFailed = false
+        } catch {
+            deletionFailed = true
+        }
+        session = nil
+        isXConnected = nil
+        errorMessage = deletionFailed
+            ? AuthenticationError.sessionDeleteFailed.localizedDescription
+            : nil
+    }
+
+    private func isUnauthorized(_ error: Error) -> Bool {
+        guard let authenticationError = error as? AuthenticationError,
+              case .serverError(let statusCode, _) = authenticationError else {
+            return false
+        }
+        return statusCode == 401
+    }
+
+    private func handle(_ error: Error) {
+        errorMessage = (error as? LocalizedError)?.errorDescription
+            ?? "時間をおいて、もう一度お試しください。"
+    }
 }

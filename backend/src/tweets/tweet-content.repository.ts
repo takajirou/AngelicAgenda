@@ -7,9 +7,10 @@ export interface SaveTweetContentResult {
 
 export abstract class TweetContentRepository {
   abstract save(
+    userId: string,
     tweet: TweetContent,
     rawPayload: Readonly<Record<string, unknown>>,
   ): Promise<SaveTweetContentResult>;
 
-  abstract findLatest(limit: number): Promise<TweetContent[]>;
+  abstract findLatest(userId: string, limit: number): Promise<TweetContent[]>;
 }
