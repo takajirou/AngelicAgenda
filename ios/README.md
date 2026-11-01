@@ -16,6 +16,12 @@ cp Config/Secrets.xcconfig.example Config/Secrets.xcconfig
 
 X Developer ConsoleのClient ID、Client Secret、Callback URIはこの方式では使用しません。
 
+## 受信したポストの表示
+
+接続後は`GET /tweets?limit=50`から保存済みポストを取得し、受信日時の新しい順で一覧表示します。画面表示時に自動取得し、一覧を下へ引くと再読み込みできます。読み込み中、空、通信エラーの状態をそれぞれ表示し、各項目から元のXポストを開けます。
+
+APIへのアクセスには、X接続時と同じ`ANGELIC_SETUP_TOKEN`を使用します。トークンや通知本文はアプリからログ出力しません。
+
 ## 注意事項
 
 - Xの非公開Web Cookieと画面仕様に依存するため、X側の変更で動作しなくなる可能性があります。

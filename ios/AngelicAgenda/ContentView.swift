@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var authentication: AuthenticationViewModel
+    @StateObject private var tweetList = TweetListViewModel()
 
     var body: some View {
         Group {
@@ -27,27 +28,11 @@ struct ContentView: View {
     }
 
     private func authenticatedView(connection: AngelicConnection) -> some View {
-        NavigationStack {
-            ContentUnavailableView(
-                "告知はまだありません",
-                systemImage: "bell.badge",
-                description: Text("受信した告知がここに表示されます")
-            )
-            .navigationTitle("告知")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Text(connection.serverURL.host() ?? connection.serverURL.absoluteString)
-                        Button("この端末の接続情報を削除", role: .destructive) {
-                            authentication.signOut()
-                        }
-                    } label: {
-                        Image(systemName: "person.crop.circle")
-                            .accessibilityLabel("アカウント")
-                    }
-                }
-            }
-        }
+        TweetListView(
+            viewModel: tweetList,
+            connection: connection,
+            onSignOut: authentication.signOut
+        )
     }
 }
 
