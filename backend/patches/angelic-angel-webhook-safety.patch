@@ -24,8 +24,7 @@ index 4e24b7f..e015bae 100644
 +    tracing::info!("notification decrypted");
  
      send_to_webhook(&payload).await?;
- 
-@@ -264,11 +264,10 @@ async fn send_to_webhook(payload: &serde_json::Value) -> Result<()> {
+@@ -264,12 +264,11 @@ async fn send_to_webhook(payload: &serde_json::Value) -> Result<()> {
 
      let response = client.post(&webhook_url).json(payload).send().await?;
 
