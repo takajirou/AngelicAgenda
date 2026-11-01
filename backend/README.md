@@ -51,6 +51,8 @@ docker compose up --build
 
 Angelic-Angelの固定コミットには、安全パッチをDockerビルド時に適用します。パッチは通知本文のログ出力を止め、Webhookが非2xxを返したときに`not_delivered`でACKするためのものです。
 
+リスナーの生ログはそのまま出力せず、AutoPush接続、通知受信、復号、Webhook転送の成否だけを固定文言へ変換して記録します。Cookie、通知本文、投稿ID、Push登録IDはログへ出しません。
+
 ## ツイート取得API
 
 `GET /tweets?limit=50`

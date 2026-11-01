@@ -9,6 +9,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { access, chmod, mkdir, open, rename, unlink } from 'node:fs/promises';
 import { dirname, isAbsolute } from 'node:path';
+import type { Readable } from 'node:stream';
 import type { ProvisionXSessionDto } from './angelic-angel.dto.js';
 
 interface AngelicAngelRuntime {
@@ -192,13 +193,15 @@ export class AngelicAngelService implements OnModuleInit, OnModuleDestroy {
     return new Promise((resolve, reject) => {
       const child = spawn(
         runtime.binaryPath,
-        ['--config', runtime.configPath, 'listen'],
+        ['--config', runtime.configPath, '--verbose', 'listen'],
         {
           env: { ...process.env },
-          stdio: 'ignore',
+          stdio: ['ignore', 'pipe', 'pipe'],
         },
       );
       this.listener = child;
+      this.observeListenerDiagnostics(child.stdout);
+      this.observeListenerDiagnostics(child.stderr);
 
       child.once('spawn', () => {
         this.logger.log('Angelic Angel listener started');
@@ -222,5 +225,47 @@ export class AngelicAngelService implements OnModuleInit, OnModuleDestroy {
   private stopListener(): void {
     this.listener?.kill('SIGTERM');
     this.listener = undefined;
+  }
+
+  private observeListenerDiagnostics(stream: Readable | null): void {
+    if (!stream) return;
+
+    let pending = '';
+    stream.setEncoding('utf8');
+    stream.on('data', (chunk: string) => {
+      pending += chunk;
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() ?? '';
+      for (const line of lines) this.logSafeListenerEvent(line);
+    });
+    stream.once('end', () => {
+      if (pending) this.logSafeListenerEvent(pending);
+    });
+  }
+
+  private logSafeListenerEvent(line: string): void {
+    // Angelic-Angelの生ログは外部入力を含み得るため、既知イベントだけを固定文言へ変換する。
+    if (line.includes('WebSocket connection established')) {
+      this.logger.log('Angelic Angel AutoPush connection established');
+    } else if (line.includes('notification received')) {
+      this.logger.log('Angelic Angel notification received');
+    } else if (line.includes('notification decrypted')) {
+      this.logger.log('Angelic Angel notification decrypted');
+    } else if (line.includes('webhook request succeeded')) {
+      this.logger.log('Angelic Angel webhook delivery succeeded');
+    } else if (line.includes('WebSocket connection failed')) {
+      this.logger.warn('Angelic Angel AutoPush connection failed; retrying');
+    } else if (line.includes('server requested backoff')) {
+      this.logger.warn('Angelic Angel AutoPush server requested backoff');
+    } else if (line.includes('decryption error')) {
+      this.logger.warn('Angelic Angel notification decryption failed');
+    } else if (
+      line.includes('webhook request failed') ||
+      line.includes('notification processing error')
+    ) {
+      this.logger.warn('Angelic Angel webhook delivery failed');
+    } else if (line.includes('fatal error')) {
+      this.logger.error('Angelic Angel listener requires re-registration');
+    }
   }
 }
