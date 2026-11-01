@@ -107,14 +107,15 @@ components:
           writeOnly: true
     XNotificationData:
       type: object
-      additionalProperties: false
+      description: 未使用の追加フィールドは受信境界で除去されます。
       properties:
         type:
           type: string
           maxLength: 64
         uri:
           type: string
-          format: uri
+          format: uri-reference
+          description: Xの投稿を示すHTTPS URLまたは相対パス
           maxLength: 2048
         title:
           type: string
@@ -136,7 +137,7 @@ components:
           maxLength: 256
     XNotification:
       type: object
-      additionalProperties: false
+      description: Xが追加する未使用フィールドは受信境界で除去されます。
       properties:
         title:
           type: string
