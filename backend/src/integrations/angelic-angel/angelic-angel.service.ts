@@ -259,11 +259,15 @@ export class AngelicAngelService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn('Angelic Angel AutoPush server requested backoff');
     } else if (line.includes('decryption error')) {
       this.logger.warn('Angelic Angel notification decryption failed');
-    } else if (
-      line.includes('webhook request failed') ||
-      line.includes('notification processing error')
-    ) {
-      this.logger.warn('Angelic Angel webhook delivery failed');
+    } else if (line.includes('webhook request failed')) {
+      const status = line.match(/\bstatus=(\d{3})\b/)?.[1];
+      this.logger.warn(
+        status
+          ? `Angelic Angel webhook delivery failed (HTTP ${status})`
+          : 'Angelic Angel webhook delivery failed',
+      );
+    } else if (line.includes('notification processing error')) {
+      this.logger.warn('Angelic Angel notification processing failed');
     } else if (line.includes('fatal error')) {
       this.logger.error('Angelic Angel listener requires re-registration');
     }
