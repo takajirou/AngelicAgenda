@@ -10,7 +10,7 @@ enum AngelicServerConfiguration {
     private static let setupTokenInfoDictionaryKey = "AngelicSetupToken"
 
     static let baseURL: URL = {
-        guard let url = URL(string: "https://agenda-api.takajirou.app/webhooks/x") else {
+        guard let url = URL(string: "https://agenda-api.takajirou.app") else {
             preconditionFailure("固定された外部サーバーURLが不正です。")
         }
         return url
@@ -24,6 +24,13 @@ enum AngelicServerConfiguration {
 struct AngelicServerSettings: Equatable, Sendable {
     let baseURL: URL
     let setupToken: String
+
+    var sessionProvisioningURL: URL {
+        baseURL
+            .appendingPathComponent("integrations")
+            .appendingPathComponent("angelic-angel")
+            .appendingPathComponent("session")
+    }
 }
 
 struct AngelicConnection: Codable, Equatable, Sendable {

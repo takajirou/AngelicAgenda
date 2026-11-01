@@ -4,7 +4,7 @@
 
 このアプリは、個人検証用に`WKWebView`でXのログイン画面を開き、ログイン後にXドメインの`auth_token`と`ct0`だけを検出します。取得した値はHTTPSで外部サーバーへ一度だけ送信し、画面表示・ログ出力・端末保存は行いません。接続成功後はXのWebViewデータを削除します。
 
-外部サーバーURLは`https://agenda-api.takajirou.app/webhooks/x`に固定されています。セットアップトークンはBuild Settingから`Info.plist`へ展開されるため、アプリ画面での入力は不要です。
+外部サーバーのベースURLは`https://agenda-api.takajirou.app`に固定されています。iOSアプリはこのURLの`/integrations/angelic-angel/session`へ接続します。セットアップトークンはBuild Settingから`Info.plist`へ展開されるため、アプリ画面での入力は不要です。
 
 初回ビルド前に次の手順でローカル設定を作成します。
 

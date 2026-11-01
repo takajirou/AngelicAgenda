@@ -38,7 +38,11 @@ final class AuthenticationViewModelTests: XCTestCase {
 
         XCTAssertEqual(
             settings.baseURL.absoluteString,
-            "https://agenda-api.takajirou.app/webhooks/x"
+            "https://agenda-api.takajirou.app"
+        )
+        XCTAssertEqual(
+            settings.sessionProvisioningURL.absoluteString,
+            "https://agenda-api.takajirou.app/integrations/angelic-angel/session"
         )
     }
 
