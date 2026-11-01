@@ -8,6 +8,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Logger } from '@nestjs/common';
 import { AngelicAngelService } from './angelic-angel.service.js';
 
 describe('AngelicAngelService', () => {
@@ -30,7 +31,8 @@ describe('AngelicAngelService', () => {
         '  printf "\\n[registration]\\nid = \\"test\\"\\n" >> "$2"',
         '  exit 0',
         'fi',
-        'if [ "$3" = "listen" ]; then',
+        'if [ "$4" = "listen" ]; then',
+        '  printf "%s\\n" "WebSocket connection established, listening for notifications" >&2',
         '  trap "exit 0" TERM',
         '  while :; do sleep 1; done',
         'fi',
@@ -53,6 +55,8 @@ describe('AngelicAngelService', () => {
   });
 
   it('registers the session, stores a private config, and starts listening', async () => {
+    const log = vi.spyOn(Logger.prototype, 'log');
+
     await service.provision({
       authToken: 'a'.repeat(32),
       ct0: 'b'.repeat(32),
@@ -64,6 +68,11 @@ describe('AngelicAngelService', () => {
     expect(content).toContain(`ct0 = "${'b'.repeat(32)}"`);
     expect(content).toContain('[registration]');
     expect(mode).toBe(0o600);
+    await vi.waitFor(() => {
+      expect(log).toHaveBeenCalledWith(
+        'Angelic Angel AutoPush connection established',
+      );
+    });
   });
 
   it('keeps the previous config when registration fails', async () => {
