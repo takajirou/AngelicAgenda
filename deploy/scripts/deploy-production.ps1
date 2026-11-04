@@ -2,7 +2,11 @@
 param(
     [Parameter()]
     [ValidatePattern('^https://')]
-    [string]$HealthUrl = 'https://agenda-api.takajirou.app/health'
+    [string]$HealthUrl = 'https://agenda-api.takajirou.app/health',
+
+    [Parameter()]
+    [ValidatePattern('^https://')]
+    [string]$PgwebUrl = 'https://agenda-db.takajirou.app'
 )
 
 Set-StrictMode -Version Latest
@@ -16,6 +20,7 @@ $requiredSecretFiles = @{
     auth_pepper = 32
     x_session_encryption_key = 64
     cloudflare_tunnel_token = 20
+    pgweb_auth_password = 32
 }
 
 foreach ($entry in $requiredSecretFiles.GetEnumerator()) {
@@ -91,6 +96,42 @@ for ($attempt = 1; $attempt -le 10; $attempt++) {
 
 if (-not $healthCheckSucceeded) {
     throw "Health check failed after 10 attempts: $($lastHealthError.Exception.Message)"
+}
+
+$pgwebPassword = [System.IO.File]::ReadAllText(
+    (Join-Path $secretDirectory 'pgweb_auth_password')
+).Trim()
+$pgwebCredential = [Convert]::ToBase64String(
+    [System.Text.Encoding]::UTF8.GetBytes("admin`:$pgwebPassword")
+)
+$pgwebHeaders = @{ Authorization = "Basic $pgwebCredential" }
+$pgwebCheckSucceeded = $false
+$lastPgwebError = $null
+
+for ($attempt = 1; $attempt -le 10; $attempt++) {
+    try {
+        $response = Invoke-WebRequest `
+            -Uri $PgwebUrl `
+            -Headers $pgwebHeaders `
+            -UseBasicParsing `
+            -TimeoutSec 10
+        if ($response.StatusCode -ne 200) {
+            throw "Unexpected pgweb response status: $($response.StatusCode)"
+        }
+
+        $pgwebCheckSucceeded = $true
+        break
+    }
+    catch {
+        $lastPgwebError = $_
+        if ($attempt -lt 10) {
+            Start-Sleep -Seconds 5
+        }
+    }
+}
+
+if (-not $pgwebCheckSucceeded) {
+    throw "pgweb check failed after 10 attempts: $($lastPgwebError.Exception.Message)"
 }
 
 # 旧単一ユーザー構成のvolumeには平文のX Cookieが残るため、

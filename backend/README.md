@@ -46,4 +46,20 @@ npm run test:e2e
 npm run build
 ```
 
+## 開発用DB管理画面
+
+開発用Docker Composeには[pgweb](https://github.com/sosedoff/pgweb)を含めています。プロジェクトルートで起動し、ブラウザから`http://localhost:8081`を開くとPostgreSQLのテーブルとデータを確認・編集できます。
+
+```bash
+docker compose up --build --detach
+```
+
+pgwebはCompose内のPostgreSQLへ自動接続するため、接続情報の入力は不要です。開発環境では外部から管理画面へアクセスできないよう、ホスト側の`127.0.0.1`だけに公開しています。本番環境はホストのポートへ公開せず、認証付きのCloudflare Tunnel経由でのみアクセスできます。
+
+管理画面を止める場合は、次を実行します。
+
+```bash
+docker compose stop pgweb
+```
+
 Dockerイメージは[sh1ma/Angelic-Angel](https://github.com/sh1ma/Angelic-Angel)を固定コミットからビルドします。ライセンス本文はイメージ内の`/usr/share/doc/angelic-angel/LICENSE`へ含めています。
