@@ -69,6 +69,7 @@ jobs:
           AUTH_PEPPER: ${{ secrets.AUTH_PEPPER }}
           X_SESSION_ENCRYPTION_KEY: ${{ secrets.X_SESSION_ENCRYPTION_KEY }}
           CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+          PGWEB_AUTH_PASSWORD: ${{ secrets.PGWEB_AUTH_PASSWORD }}
         run: |
           $ErrorActionPreference = "Stop"
           $secretDirectory = Join-Path $env:GITHUB_WORKSPACE "deploy\secrets"
@@ -79,6 +80,7 @@ jobs:
             auth_pepper = $env:AUTH_PEPPER
             x_session_encryption_key = $env:X_SESSION_ENCRYPTION_KEY
             cloudflare_tunnel_token = $env:CLOUDFLARE_TUNNEL_TOKEN
+            pgweb_auth_password = $env:PGWEB_AUTH_PASSWORD
           }
 
           $utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
@@ -101,10 +103,11 @@ jobs:
         run: >-
           ./deploy/scripts/deploy-production.ps1
           -HealthUrl "https://agenda-api.takajirou.app/health"
+          -PgwebUrl "https://agenda-db.takajirou.app"
 
       - name: Show diagnostics after failure
         if: failure()
         shell: powershell -ExecutionPolicy Bypass -NoLogo -NoProfile -NonInteractive -Command ". '{0}'"
         run: |
           docker compose -f deploy\compose.production.yml ps
-          docker compose -f deploy\compose.production.yml logs --no-color --tail 100 database backend cloudflared
+          docker compose -f deploy\compose.production.yml logs --no-color --tail 100 database backend pgweb cloudflared

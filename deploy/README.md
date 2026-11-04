@@ -62,6 +62,7 @@ function New-RandomHex {
 New-RandomHex | Set-Content -NoNewline -Encoding ascii deploy\secrets\postgres_password
 New-RandomHex | Set-Content -NoNewline -Encoding ascii deploy\secrets\auth_pepper
 New-RandomHex | Set-Content -NoNewline -Encoding ascii deploy\secrets\x_session_encryption_key
+New-RandomHex | Set-Content -NoNewline -Encoding ascii deploy\secrets\pgweb_auth_password
 ```
 
 Webhookはバックエンドコンテナ内の署名付きループバックURLへ固定されるため、外部公開URLの設定は不要です。
@@ -72,8 +73,9 @@ Webhookはバックエンドコンテナ内の署名付きループバックURL�
 2. Tunnel名を`angelic-agenda-home`などにする
 3. Public Hostnameへ`api.example.com`などを登録する
 4. Service Typeを`HTTP`、URLを`backend:3000`にする
-5. 「Add a replica」に表示されるコマンドから、`eyJ...`で始まるTunnelトークンだけをコピーする
-6. 次のPowerShellを実行し、非表示の入力欄へトークンを貼り付けてEnterを押す
+5. DB管理画面用のPublic Hostnameとして`agenda-db.takajirou.app`を追加し、Service Typeを`HTTP`、URLを`pgweb:8081`にする
+6. 「Add a replica」に表示されるコマンドから、`eyJ...`で始まるTunnelトークンだけをコピーする
+7. 次のPowerShellを実行し、非表示の入力欄へトークンを貼り付けてEnterを押す
 
 ```powershell
 $secureToken = Read-Host "Tunnel token" -AsSecureString
@@ -104,6 +106,8 @@ curl.exe --fail-with-body https://api.example.com/health
 ```
 
 正常なら`{"status":"ok"}`が返ります。Composeの`restart: unless-stopped`により、Docker Desktop再起動後もコンテナが自動復旧します。
+
+DB管理画面は`https://agenda-db.takajirou.app`で開きます。Basic認証のユーザー名は`admin`、パスワードは`deploy\secrets\pgweb_auth_password`の内容です。pgweb自体はホストのポートへ公開せず、Cloudflare Tunnelからだけアクセスできます。
 
 失敗時はCookieやトークンを出力しない範囲でログを確認します。
 
@@ -143,6 +147,7 @@ GitHubリポジトリの「Settings > Environments」で`production` environment
 | `AUTH_PEPPER` | `deploy\secrets\auth_pepper`の内容 |
 | `X_SESSION_ENCRYPTION_KEY` | `deploy\secrets\x_session_encryption_key`の内容 |
 | `CLOUDFLARE_TUNNEL_TOKEN` | `deploy\secrets\cloudflare_tunnel_token`の内容 |
+| `PGWEB_AUTH_PASSWORD` | `deploy\secrets\pgweb_auth_password`の内容 |
 
 `AUTH_PEPPER`と`X_SESSION_ENCRYPTION_KEY`を失うと既存のログインセッションやX連携を復元できません。安全な場所へバックアップし、通常のデプロイでは値を変更しないでください。自動実行を止めないため、`production` environmentにrequired reviewerは設定しません。
 
@@ -152,7 +157,7 @@ GitHubリポジトリの「Settings > Environments」で`production` environment
 2. GitHub SecretsからCompose用のシークレットファイルを作成
 3. 既存データを保持したままPostgreSQLユーザーのパスワードを現在のSecretへ同期
 4. バックエンドイメージをビルドし、Composeサービスを更新
-5. コンテナのhealthcheckと公開`/health`を確認
+5. コンテナのhealthcheck、公開`/health`、認証付きDB管理画面を確認
 6. 初回移行時だけ、平文Cookieが残る旧`angelic_angel_data` volumeと旧セットアップトークンファイルを削除
 
 失敗時は、通知本文やCookieを出さない範囲でコンテナ状態と直近100行のログをActionsへ出力します。
