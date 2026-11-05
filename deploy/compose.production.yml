@@ -12,6 +12,7 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       AUTH_PEPPER_FILE: /run/secrets/auth_pepper
       X_SESSION_ENCRYPTION_KEY_FILE: /run/secrets/x_session_encryption_key
+      X_API_BEARER_TOKEN_FILE: /run/secrets/x_api_bearer_token
       ANGELIC_ANGEL_BINARY_PATH: /usr/local/bin/angelic-angel
       ANGELIC_ANGEL_CONFIG_DIRECTORY: /tmp/angelic-angel
       WEBHOOK_BASE_URL: http://127.0.0.1:3000/webhooks/x/
@@ -22,6 +23,7 @@ services:
       - postgres_password
       - auth_pepper
       - x_session_encryption_key
+      - x_api_bearer_token
     depends_on:
       database:
         condition: service_healthy
@@ -136,6 +138,8 @@ secrets:
     file: ./secrets/auth_pepper
   x_session_encryption_key:
     file: ./secrets/x_session_encryption_key
+  x_api_bearer_token:
+    file: ./secrets/x_api_bearer_token
   cloudflare_tunnel_token:
     file: ./secrets/cloudflare_tunnel_token
   pgweb_auth_password:

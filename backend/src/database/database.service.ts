@@ -106,5 +106,16 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       CREATE INDEX IF NOT EXISTS user_tweet_contents_latest_idx
       ON user_tweet_contents (user_id, received_at DESC, tweet_id DESC)
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS x_user_profiles (
+        x_user_id varchar(32) PRIMARY KEY,
+        username varchar(15) NOT NULL,
+        display_name varchar(512) NOT NULL,
+        profile_image_url varchar(2048),
+        fetched_at timestamptz NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
   }
 }

@@ -1,4 +1,6 @@
 import type { XNotificationWebhookDto } from './tweet-content.dto.js';
+import type { XProfile } from '../x-profiles/x-profile.model.js';
+import { XProfileService } from '../x-profiles/x-profile.service.js';
 import type { TweetContent } from './tweet-content.model.js';
 import { TweetContentRepository } from './tweet-content.repository.js';
 import { TweetContentService } from './tweet-content.service.js';
@@ -18,12 +20,27 @@ class FakeTweetContentRepository extends TweetContentRepository {
 
 describe('TweetContentService', () => {
   const userId = '11111111-1111-4111-8111-111111111111';
+  const profile: XProfile = {
+    xUserId: '987654321',
+    username: 'officialacct',
+    displayName: '公式アカウント',
+    profileImageUrl:
+      'https://pbs.twimg.com/profile_images/987654321/icon_normal.jpg',
+    fetchedAt: new Date('2026-10-29T12:00:00.000Z'),
+  };
   let repository: FakeTweetContentRepository;
+  let getProfileByUsername: ReturnType<typeof vi.fn>;
   let service: TweetContentService;
 
   beforeEach(() => {
     repository = new FakeTweetContentRepository();
-    service = new TweetContentService(repository);
+    getProfileByUsername = vi.fn().mockResolvedValue({
+      status: 'cached',
+      profile,
+    });
+    service = new TweetContentService(repository, {
+      getByUsername: getProfileByUsername,
+    } as unknown as XProfileService);
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-10-29T12:00:00.000Z'));
   });
@@ -56,6 +73,8 @@ describe('TweetContentService', () => {
         text: '先行抽選は11月1日までです。',
         authorDisplayName: '公式アカウント',
         authorHandle: 'officialacct',
+        profileImageUrl:
+          'https://pbs.twimg.com/profile_images/987654321/icon_normal.jpg',
         originalUrl: 'https://x.com/i/web/status/1234567890123456789',
         notificationType: 'tweet',
         sourceTag: 'tweet_1234567890123456789',
@@ -68,6 +87,7 @@ describe('TweetContentService', () => {
       expect.objectContaining({ tweetId: '1234567890123456789' }),
       payload,
     );
+    expect(getProfileByUsername).toHaveBeenCalledWith('officialacct');
   });
 
   it('uses top-level text and handles the generic status URL', async () => {
@@ -86,9 +106,11 @@ describe('TweetContentService', () => {
         tweetId: '20',
         text: '予約販売を開始しました',
         authorHandle: null,
+        profileImageUrl: null,
         notifiedAt: '2026-10-29T11:30:00.000Z',
       },
     });
+    expect(getProfileByUsername).not.toHaveBeenCalled();
   });
 
   it('accepts the relative status path used by X Web Push', async () => {
@@ -178,6 +200,25 @@ describe('TweetContentService', () => {
     });
   });
 
+  it('stores the notification when profile lookup fails', async () => {
+    getProfileByUsername.mockRejectedValueOnce(new Error('X API unavailable'));
+
+    const result = await service.ingest(userId, {
+      title: '公式',
+      body: '受付中です',
+      data: { uri: 'https://x.com/official/status/456' },
+    });
+
+    expect(result).toMatchObject({
+      status: 'accepted',
+      tweet: {
+        tweetId: '456',
+        profileImageUrl: null,
+      },
+    });
+    expect(repository.save).toHaveBeenCalledOnce();
+  });
+
   it('serializes dates when listing saved tweets', async () => {
     repository.findLatest.mockResolvedValueOnce([
       {
@@ -185,6 +226,8 @@ describe('TweetContentService', () => {
         text: '本文',
         authorDisplayName: '公式',
         authorHandle: 'official',
+        profileImageUrl:
+          'https://pbs.twimg.com/profile_images/987654321/icon_normal.jpg',
         originalUrl: 'https://x.com/i/web/status/123',
         notificationType: 'tweet',
         sourceTag: null,

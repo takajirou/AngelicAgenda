@@ -16,7 +16,9 @@ export class SecretService {
       64,
     );
     if (!/^[0-9a-f]{64}$/i.test(encoded)) {
-      throw new Error('X session encryption key must be 64 hexadecimal characters');
+      throw new Error(
+        'X session encryption key must be 64 hexadecimal characters',
+      );
     }
     return Buffer.from(encoded, 'hex');
   }
@@ -32,7 +34,8 @@ export class SecretService {
 
     const direct = process.env[directName];
     const file = process.env[fileName];
-    if (direct && file) throw new Error(`${directName} and ${fileName} are mutually exclusive`);
+    if (direct && file)
+      throw new Error(`${directName} and ${fileName} are mutually exclusive`);
 
     let value: string | undefined;
     if (direct) value = direct.trim();
@@ -43,5 +46,13 @@ export class SecretService {
     }
     this.cache.set(cacheKey, value);
     return value;
+  }
+
+  xApiBearerToken(): string {
+    return this.readRequired(
+      'X_API_BEARER_TOKEN',
+      'X_API_BEARER_TOKEN_FILE',
+      20,
+    );
   }
 }

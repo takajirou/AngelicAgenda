@@ -11,6 +11,7 @@ interface TweetContentRow {
   text: string;
   author_display_name: string;
   author_handle: string | null;
+  profile_image_url: string | null;
   original_url: string;
   notification_type: string | null;
   source_tag: string | null;
@@ -37,7 +38,8 @@ export class PostgresTweetContentRepository extends TweetContentRepository {
        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
        ON CONFLICT (user_id, tweet_id) DO NOTHING
        RETURNING tweet_id, text, author_display_name, author_handle,
-         original_url, notification_type, source_tag, notified_at, received_at`,
+         NULL::varchar AS profile_image_url, original_url, notification_type,
+         source_tag, notified_at, received_at`,
       [
         userId,
         tweet.tweetId,
@@ -56,9 +58,18 @@ export class PostgresTweetContentRepository extends TweetContentRepository {
     if (inserted) return { duplicate: false, tweet: this.mapRow(inserted) };
 
     const existing = await this.database.query<TweetContentRow>(
-      `SELECT tweet_id, text, author_display_name, author_handle,
-         original_url, notification_type, source_tag, notified_at, received_at
-       FROM user_tweet_contents WHERE user_id = $1 AND tweet_id = $2`,
+      `SELECT t.tweet_id, t.text, t.author_display_name, t.author_handle,
+         profile.profile_image_url, t.original_url, t.notification_type,
+         t.source_tag, t.notified_at, t.received_at
+       FROM user_tweet_contents t
+       LEFT JOIN LATERAL (
+         SELECT p.profile_image_url
+         FROM x_user_profiles p
+         WHERE lower(p.username) = lower(t.author_handle)
+         ORDER BY p.fetched_at DESC
+         LIMIT 1
+       ) profile ON true
+       WHERE t.user_id = $1 AND t.tweet_id = $2`,
       [userId, tweet.tweetId],
     );
     const duplicate = existing.rows[0];
@@ -68,11 +79,19 @@ export class PostgresTweetContentRepository extends TweetContentRepository {
 
   async findLatest(userId: string, limit: number): Promise<TweetContent[]> {
     const result = await this.database.query<TweetContentRow>(
-      `SELECT tweet_id, text, author_display_name, author_handle,
-         original_url, notification_type, source_tag, notified_at, received_at
-       FROM user_tweet_contents
-       WHERE user_id = $1
-       ORDER BY received_at DESC, tweet_id DESC
+      `SELECT t.tweet_id, t.text, t.author_display_name, t.author_handle,
+         profile.profile_image_url, t.original_url, t.notification_type,
+         t.source_tag, t.notified_at, t.received_at
+       FROM user_tweet_contents t
+       LEFT JOIN LATERAL (
+         SELECT p.profile_image_url
+         FROM x_user_profiles p
+         WHERE lower(p.username) = lower(t.author_handle)
+         ORDER BY p.fetched_at DESC
+         LIMIT 1
+       ) profile ON true
+       WHERE t.user_id = $1
+       ORDER BY t.received_at DESC, t.tweet_id DESC
        LIMIT $2`,
       [userId, limit],
     );
@@ -85,6 +104,7 @@ export class PostgresTweetContentRepository extends TweetContentRepository {
       text: row.text,
       authorDisplayName: row.author_display_name,
       authorHandle: row.author_handle,
+      profileImageUrl: row.profile_image_url,
       originalUrl: row.original_url,
       notificationType: row.notification_type,
       sourceTag: row.source_tag,

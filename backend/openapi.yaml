@@ -159,12 +159,13 @@ components:
     TweetContent:
       type: object
       additionalProperties: false
-      required: [tweetId, text, authorDisplayName, authorHandle, originalUrl, notificationType, sourceTag, notifiedAt, receivedAt]
+      required: [tweetId, text, authorDisplayName, authorHandle, profileImageUrl, originalUrl, notificationType, sourceTag, notifiedAt, receivedAt]
       properties:
         tweetId: { type: string, pattern: '^[0-9]{1,32}$' }
         text: { type: string, minLength: 1, maxLength: 10000 }
         authorDisplayName: { type: string }
         authorHandle: { type: [string, 'null'] }
+        profileImageUrl: { type: [string, 'null'], format: uri }
         originalUrl: { type: string, format: uri }
         notificationType: { type: [string, 'null'] }
         sourceTag: { type: [string, 'null'] }

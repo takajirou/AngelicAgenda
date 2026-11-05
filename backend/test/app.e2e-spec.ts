@@ -13,6 +13,7 @@ import { AngelicAngelService } from '../src/integrations/angelic-angel/angelic-a
 import { AppModule } from '../src/app.module.js';
 import type { TweetContent } from '../src/tweets/tweet-content.model.js';
 import { TweetContentRepository } from '../src/tweets/tweet-content.repository.js';
+import { XProfileService } from '../src/x-profiles/x-profile.service.js';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
@@ -26,6 +27,7 @@ describe('AppController (e2e)', () => {
   const verifyWebhookRoute = vi.fn();
   const saveTweet = vi.fn();
   const findLatestTweets = vi.fn();
+  const getXProfile = vi.fn();
   const authSession = {
     token: authToken,
     expiresAt: '2026-12-01T00:00:00.000Z',
@@ -66,6 +68,8 @@ describe('AppController (e2e)', () => {
       })
       .overrideProvider(TweetContentRepository)
       .useValue({ save: saveTweet, findLatest: findLatestTweets })
+      .overrideProvider(XProfileService)
+      .useValue({ getByUsername: getXProfile })
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -75,11 +79,23 @@ describe('AppController (e2e)', () => {
     verifyWebhookRoute.mockReset();
     saveTweet.mockReset();
     findLatestTweets.mockReset();
+    getXProfile.mockReset();
     saveTweet.mockImplementation(async (_userId: string, tweet: TweetContent) => ({
       duplicate: false,
       tweet,
     }));
     findLatestTweets.mockResolvedValue([]);
+    getXProfile.mockResolvedValue({
+      status: 'cached',
+      profile: {
+        xUserId: '987654321',
+        username: 'official',
+        displayName: '公式アカウント',
+        profileImageUrl:
+          'https://pbs.twimg.com/profile_images/987654321/icon_normal.jpg',
+        fetchedAt: new Date('2026-10-29T12:00:00.000Z'),
+      },
+    });
     await app.init();
   });
 
@@ -141,7 +157,14 @@ describe('AppController (e2e)', () => {
       })
       .expect(200)
       .expect(({ body }) => {
-        expect(body).toMatchObject({ status: 'accepted', tweet: { tweetId: '123' } });
+        expect(body).toMatchObject({
+          status: 'accepted',
+          tweet: {
+            tweetId: '123',
+            profileImageUrl:
+              'https://pbs.twimg.com/profile_images/987654321/icon_normal.jpg',
+          },
+        });
       });
     expect(verifyWebhookRoute).toHaveBeenCalledWith(user.id, signature);
     expect(saveTweet).toHaveBeenCalledWith(
@@ -158,6 +181,8 @@ describe('AppController (e2e)', () => {
         text: '本文',
         authorDisplayName: '公式',
         authorHandle: 'official',
+        profileImageUrl:
+          'https://pbs.twimg.com/profile_images/987654321/icon_normal.jpg',
         originalUrl: 'https://x.com/i/web/status/123',
         notificationType: 'tweet',
         sourceTag: null,
