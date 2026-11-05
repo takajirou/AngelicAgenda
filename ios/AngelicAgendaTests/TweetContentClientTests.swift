@@ -16,6 +16,7 @@ final class TweetContentClientTests: XCTestCase {
             "text": "先行抽選の受付を開始しました",
             "authorDisplayName": "公式アカウント",
             "authorHandle": "official",
+            "profileImageUrl": "https://pbs.twimg.com/profile_images/987654321/icon_normal.jpg",
             "originalUrl": "https://x.com/official/status/1234567890",
             "notificationType": "tweet",
             "sourceTag": "x_web_push",
@@ -54,9 +55,13 @@ final class TweetContentClientTests: XCTestCase {
         XCTAssertEqual(tweets[0].text, "先行抽選の受付を開始しました")
         XCTAssertEqual(tweets[0].authorDisplayName, "公式アカウント")
         XCTAssertEqual(tweets[0].authorHandle, "official")
+        XCTAssertEqual(
+            tweets[0].profileImageUrl?.absoluteString,
+            "https://pbs.twimg.com/profile_images/987654321/icon_normal.jpg"
+        )
         XCTAssertEqual(tweets[0].originalUrl.absoluteString, "https://x.com/official/status/1234567890")
         XCTAssertNotNil(tweets[0].notifiedAt)
-        XCTAssertEqual(tweets[0].receivedAt.timeIntervalSince1970, 1_793_516_430.781, accuracy: 0.001)
+        XCTAssertEqual(tweets[0].receivedAt.timeIntervalSince1970, 1_793_548_830.781, accuracy: 0.001)
     }
 
     func testFetchLatestRejectsServerError() async throws {

@@ -146,31 +146,80 @@ private struct TweetContentRow: View {
     let tweet: TweetContent
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(tweet.authorDisplayName)
-                    .font(.headline)
-                if let authorHandle = tweet.authorHandle {
-                    Text("@\(authorHandle)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: 12) {
+            ProfileImage(url: tweet.profileImageUrl)
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(tweet.authorDisplayName)
+                        .font(.headline)
+                    if let authorHandle = tweet.authorHandle {
+                        Text("@\(authorHandle)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer()
-            }
 
-            Text(tweet.text)
-                .font(.body)
-                .textSelection(.enabled)
+                Text(tweet.text)
+                    .font(.body)
+                    .textSelection(.enabled)
 
-            HStack {
-                Text(tweet.receivedAt.formatted(date: .abbreviated, time: .shortened))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Link("元のポストを開く", destination: tweet.originalUrl)
-                    .font(.caption.weight(.semibold))
+                HStack {
+                    Text(tweet.receivedAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Link("元のポストを開く", destination: tweet.originalUrl)
+                        .font(.caption.weight(.semibold))
+                }
             }
         }
         .padding(.vertical, 6)
+    }
+}
+
+private struct ProfileImage: View {
+    let url: URL?
+
+    var body: some View {
+        Group {
+            if let url {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .empty:
+                        ProgressView()
+                            .controlSize(.small)
+                    case .failure:
+                        placeholder
+                    @unknown default:
+                        placeholder
+                    }
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: 44, height: 44)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(Circle())
+        .overlay {
+            Circle()
+                .stroke(Color(.separator), lineWidth: 0.5)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var placeholder: some View {
+        Image(systemName: "person.crop.circle.fill")
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(.tertiary)
+            .padding(4)
     }
 }

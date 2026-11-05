@@ -5,6 +5,7 @@ struct TweetContent: Decodable, Equatable, Identifiable, Sendable {
     let text: String
     let authorDisplayName: String
     let authorHandle: String?
+    let profileImageUrl: URL?
     let originalUrl: URL
     let notificationType: String?
     let sourceTag: String?
