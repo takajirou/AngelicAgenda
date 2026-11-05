@@ -3,6 +3,7 @@ export interface TweetContent {
   text: string;
   authorDisplayName: string;
   authorHandle: string | null;
+  profileImageUrl: string | null;
   originalUrl: string;
   notificationType: string | null;
   sourceTag: string | null;

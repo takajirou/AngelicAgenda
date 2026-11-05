@@ -18,6 +18,10 @@ import { TweetContentRepository } from './tweets/tweet-content.repository.js';
 import { TweetContentService } from './tweets/tweet-content.service.js';
 import { WebhookLoopbackGuard } from './tweets/webhook-loopback.guard.js';
 import { XWebhookController } from './tweets/x-webhook.controller.js';
+import { XApiClientService } from './integrations/x-api/x-api-client.service.js';
+import { XProfileService } from './x-profiles/x-profile.service.js';
+import { XProfileRepository } from './x-profiles/x-profile.repository.js';
+import { PostgresXProfileRepository } from './x-profiles/postgres-x-profile.repository.js';
 
 @Module({
   imports: [],
@@ -39,6 +43,8 @@ import { XWebhookController } from './tweets/x-webhook.controller.js';
     AngelicAngelService,
     WebhookLoopbackGuard,
     TweetContentService,
+    XApiClientService,
+    XProfileService,
     {
       provide: AuthRepository,
       useClass: PostgresAuthRepository,
@@ -46,6 +52,10 @@ import { XWebhookController } from './tweets/x-webhook.controller.js';
     {
       provide: TweetContentRepository,
       useClass: PostgresTweetContentRepository,
+    },
+    {
+      provide: XProfileRepository,
+      useClass: PostgresXProfileRepository,
     },
   ],
 })

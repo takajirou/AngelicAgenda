@@ -8,6 +8,7 @@ services:
       DATABASE_URL: postgres://app:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@database:5432/app
       AUTH_PEPPER: ${AUTH_PEPPER:?AUTH_PEPPER is required}
       X_SESSION_ENCRYPTION_KEY: ${X_SESSION_ENCRYPTION_KEY:?X_SESSION_ENCRYPTION_KEY is required}
+      X_API_BEARER_TOKEN: ${X_API_BEARER_TOKEN:?X_API_BEARER_TOKEN is required}
       ANGELIC_ANGEL_BINARY_PATH: /usr/local/bin/angelic-angel
       ANGELIC_ANGEL_CONFIG_DIRECTORY: /tmp/angelic-angel
       WEBHOOK_BASE_URL: http://127.0.0.1:3000/webhooks/x/

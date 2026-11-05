@@ -7,6 +7,7 @@ import {
   type TweetIngestionResult,
 } from './tweet-content.model.js';
 import { TweetContentRepository } from './tweet-content.repository.js';
+import { XProfileService } from '../x-profiles/x-profile.service.js';
 
 const allowedXHosts = new Set([
   'x.com',
@@ -25,7 +26,10 @@ interface TweetReference {
 export class TweetContentService {
   private readonly logger = new Logger(TweetContentService.name);
 
-  constructor(private readonly repository: TweetContentRepository) {}
+  constructor(
+    private readonly repository: TweetContentRepository,
+    private readonly xProfileService: XProfileService,
+  ) {}
 
   async ingest(
     userId: string,
@@ -50,6 +54,7 @@ export class TweetContentService {
       text,
       authorDisplayName,
       authorHandle: reference.authorHandle,
+      profileImageUrl: null,
       originalUrl: `https://x.com/i/web/status/${reference.tweetId}`,
       notificationType: this.nonEmpty(payload.data?.type) ?? null,
       sourceTag:
@@ -68,10 +73,15 @@ export class TweetContentService {
         ? 'Duplicate X notification received'
         : 'X notification stored',
     );
+
+    const profileImageUrl = await this.resolveProfileImageUrl(
+      reference.authorHandle,
+    );
+
     return {
       status: 'accepted',
       duplicate: saved.duplicate,
-      tweet: serializeTweetContent(saved.tweet),
+      tweet: serializeTweetContent({ ...saved.tweet, profileImageUrl }),
     };
   }
 
@@ -83,6 +93,27 @@ export class TweetContentService {
   private nonEmpty(value: string | undefined): string | undefined {
     const trimmed = value?.trim();
     return trimmed ? trimmed : undefined;
+  }
+
+  private async resolveProfileImageUrl(
+    authorHandle: string | null,
+  ): Promise<string | null> {
+    if (!authorHandle) return null;
+
+    try {
+      const result = await this.xProfileService.getByUsername(authorHandle);
+      return result.profile?.profileImageUrl ?? null;
+    } catch (error) {
+      // プロフィール取得は付加情報なので、失敗しても受信済みの通知を失わない。
+      this.logger.warn(
+        `Failed to resolve X profile image (error=${this.getErrorName(error)})`,
+      );
+      return null;
+    }
+  }
+
+  private getErrorName(error: unknown): string {
+    return error instanceof Error ? error.name : 'UnknownError';
   }
 
   private parseTweetReference(uri: string): TweetReference | undefined {
