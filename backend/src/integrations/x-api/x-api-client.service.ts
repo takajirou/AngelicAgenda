@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { SecretService } from '../../security/secret.service.js';
+import { toHighResolutionXProfileImageUrl } from '../../x-profiles/x-profile-image-url.js';
 
 const X_API_BASE_URL = 'https://api.x.com/2';
 const REQUEST_TIMEOUT_MS = 5_000;
@@ -140,7 +141,7 @@ export class XApiClientService {
       throw new XApiClientError('X APIのアイコンURLがHTTPSではありません');
     }
 
-    return url.toString();
+    return toHighResolutionXProfileImageUrl(url.toString());
   }
 
   private errorMessageForStatus(statusCode: number): string {

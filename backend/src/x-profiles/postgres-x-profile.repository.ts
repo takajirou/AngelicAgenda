@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.js';
 import type { XProfile } from './x-profile.model.js';
+import { toHighResolutionXProfileImageUrl } from './x-profile-image-url.js';
 import { XProfileRepository } from './x-profile.repository.js';
 
 interface XProfileRow {
@@ -81,7 +82,9 @@ export class PostgresXProfileRepository extends XProfileRepository {
       xUserId: row.x_user_id,
       username: row.username,
       displayName: row.display_name,
-      profileImageUrl: row.profile_image_url,
+      profileImageUrl: row.profile_image_url
+        ? toHighResolutionXProfileImageUrl(row.profile_image_url)
+        : null,
       fetchedAt: row.fetched_at,
     };
   }
