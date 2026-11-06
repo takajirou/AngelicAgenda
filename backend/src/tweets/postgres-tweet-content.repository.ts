@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.js';
+import { toHighResolutionXProfileImageUrl } from '../x-profiles/x-profile-image-url.js';
 import type { TweetContent } from './tweet-content.model.js';
 import {
   TweetContentRepository,
@@ -73,7 +74,8 @@ export class PostgresTweetContentRepository extends TweetContentRepository {
       [userId, tweet.tweetId],
     );
     const duplicate = existing.rows[0];
-    if (!duplicate) throw new Error('Tweet content disappeared after duplicate detection');
+    if (!duplicate)
+      throw new Error('Tweet content disappeared after duplicate detection');
     return { duplicate: true, tweet: this.mapRow(duplicate) };
   }
 
@@ -104,7 +106,9 @@ export class PostgresTweetContentRepository extends TweetContentRepository {
       text: row.text,
       authorDisplayName: row.author_display_name,
       authorHandle: row.author_handle,
-      profileImageUrl: row.profile_image_url,
+      profileImageUrl: row.profile_image_url
+        ? toHighResolutionXProfileImageUrl(row.profile_image_url)
+        : null,
       originalUrl: row.original_url,
       notificationType: row.notification_type,
       sourceTag: row.source_tag,
