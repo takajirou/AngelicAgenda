@@ -1,0 +1,46 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: angelic-agenda
+resources:
+  - ../../base
+  - ingress.yaml
+  - certificate.yaml
+configMapGenerator:
+  - name: deployment-settings
+    literals:
+      - API_HOST=agenda-api.takajirou.app
+      - ACME_EMAIL=soujirou.takagi@gmail.com
+generatorOptions:
+  disableNameSuffixHash: true
+replacements:
+  - source:
+      kind: ConfigMap
+      name: deployment-settings
+      fieldPath: data.API_HOST
+    targets:
+      - select:
+          kind: Ingress
+          name: backend
+        fieldPaths:
+          - spec.rules.0.host
+          - spec.tls.0.hosts.0
+      - select:
+          kind: Ingress
+          name: backend-http
+        fieldPaths:
+          - spec.rules.0.host
+      - select:
+          kind: Certificate
+          name: api
+        fieldPaths:
+          - spec.dnsNames.0
+  - source:
+      kind: ConfigMap
+      name: deployment-settings
+      fieldPath: data.ACME_EMAIL
+    targets:
+      - select:
+          kind: Issuer
+          name: letsencrypt
+        fieldPaths:
+          - spec.acme.email

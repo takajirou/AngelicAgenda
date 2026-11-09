@@ -1,10 +1,11 @@
 # 本番シークレット
 
-このディレクトリへ次の5ファイルを作成し、所有者だけが読めるようにしてください。
+このディレクトリへ次の6ファイルを作成し、所有者だけが読めるようにしてください。
 
 - `postgres_password`: URL予約文字を含まない、32バイト以上のランダムなDBパスワード
 - `auth_pepper`: 32バイト以上のランダムな認証用秘密値
 - `x_session_encryption_key`: 32バイトを表す64桁の16進数。Xセッション暗号化用
+- `x_api_bearer_token`: X APIでプロフィール画像を取得するためのBearer Token
 - `cloudflare_tunnel_token`: Cloudflare Dashboardで発行したTunnelトークン
 - `pgweb_auth_password`: `agenda-db.takajirou.app`のBasic認証で使用する32バイト以上のランダムなパスワード
 

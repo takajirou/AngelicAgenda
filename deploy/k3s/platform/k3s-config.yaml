@@ -1,0 +1,4 @@
+# /etc/rancher/k3s/config.yaml へ配置する単一ノード用設定例。
+# 標準のTraefikとServiceLBを利用するため、どちらも無効化しない。
+write-kubeconfig-mode: "0640"
+

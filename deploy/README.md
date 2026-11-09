@@ -65,6 +65,19 @@ New-RandomHex | Set-Content -NoNewline -Encoding ascii deploy\secrets\x_session_
 New-RandomHex | Set-Content -NoNewline -Encoding ascii deploy\secrets\pgweb_auth_password
 ```
 
+X Developer Portalで発行したBearer Tokenは、ランダム値で代用せず、非表示入力から保存します。
+
+```powershell
+$secureXApiToken = Read-Host "X API bearer token" -AsSecureString
+$plainXApiToken = [System.Net.NetworkCredential]::new("", $secureXApiToken).Password
+[System.IO.File]::WriteAllText(
+    (Join-Path (Resolve-Path "deploy\secrets").Path "x_api_bearer_token"),
+    $plainXApiToken,
+    [System.Text.Encoding]::ASCII
+)
+Remove-Variable plainXApiToken, secureXApiToken
+```
+
 Webhookはバックエンドコンテナ内の署名付きループバックURLへ固定されるため、外部公開URLの設定は不要です。
 
 ## 4. Cloudflare Tunnelを作成する
@@ -146,6 +159,7 @@ GitHubリポジトリの「Settings > Environments」で`production` environment
 | `POSTGRES_PASSWORD` | `deploy\secrets\postgres_password`の内容 |
 | `AUTH_PEPPER` | `deploy\secrets\auth_pepper`の内容 |
 | `X_SESSION_ENCRYPTION_KEY` | `deploy\secrets\x_session_encryption_key`の内容 |
+| `X_API_BEARER_TOKEN` | `deploy\secrets\x_api_bearer_token`の内容 |
 | `CLOUDFLARE_TUNNEL_TOKEN` | `deploy\secrets\cloudflare_tunnel_token`の内容 |
 | `PGWEB_AUTH_PASSWORD` | `deploy\secrets\pgweb_auth_password`の内容 |
 

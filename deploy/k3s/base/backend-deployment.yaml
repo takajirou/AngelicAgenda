@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: angelic-agenda
+spec:
+  replicas: 1
+  # Angelic-Angelの常駐プロセスを二重起動しないため、更新時は旧Podを先に停止する。
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend
+        app.kubernetes.io/part-of: angelic-agenda
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: ghcr.io/takajirou/angelicagenda-backend:main
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3000"
+            - name: POSTGRES_PASSWORD_FILE
+              value: /run/secrets/postgres_password
+            - name: AUTH_PEPPER_FILE
+              value: /run/secrets/auth_pepper
+            - name: X_SESSION_ENCRYPTION_KEY_FILE
+              value: /run/secrets/x_session_encryption_key
+            - name: X_API_BEARER_TOKEN_FILE
+              value: /run/secrets/x_api_bearer_token
+            - name: ANGELIC_ANGEL_BINARY_PATH
+              value: /usr/local/bin/angelic-angel
+            - name: ANGELIC_ANGEL_CONFIG_DIRECTORY
+              value: /tmp/angelic-angel
+            - name: WEBHOOK_BASE_URL
+              value: http://127.0.0.1:3000/webhooks/x/
+            - name: MAX_ACTIVE_X_SESSIONS
+              value: "20"
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: runtime
+              mountPath: /tmp
+            - name: application-secrets
+              mountPath: /run/secrets
+              readOnly: true
+      volumes:
+        - name: runtime
+          emptyDir:
+            medium: Memory
+            sizeLimit: 128Mi
+        - name: application-secrets
+          secret:
+            secretName: angelic-agenda-secrets
+            defaultMode: 0440
+
