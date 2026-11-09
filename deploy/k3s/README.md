@@ -144,6 +144,12 @@ kubectl -n kube-system logs deployment/traefik --tail=100
 
 通知本文、Cookie、Bearer Token、Secretの値はログやIssueへ貼り付けないでください。
 
+### Ubuntu/containerdのAppArmor互換問題
+
+一部のUbuntuとcontainerdの組み合わせでは、標準AppArmorプロファイルが同一コンテナ内のPostgreSQLプロセス間シグナルを拒否し、`could not signal for checkpoint: Permission denied`で起動できない問題があります。`database-statefulset.yaml`ではPostgreSQLコンテナだけAppArmorを`Unconfined`にし、非root実行、seccomp、権限昇格禁止、Linux capabilityの削除は維持しています。
+
+カーネルログに`apparmor="DENIED" operation="signal" comm="postgres"`が出なくなる修正版のUbuntuまたはcontainerdを導入できたら、この互換設定を削除して標準AppArmorプロファイルへ戻してください。経緯は[containerd issue #14485](https://github.com/containerd/containerd/issues/14485)を参照してください。
+
 ## データのバックアップ
 
 k3sの`local-path` PVCは同じホストのディスク障害から保護しません。定期的に別媒体へバックアップします。
