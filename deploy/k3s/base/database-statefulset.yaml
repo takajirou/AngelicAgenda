@@ -78,6 +78,11 @@ spec:
               cpu: "1"
               memory: 1Gi
           securityContext:
+            # Ubuntu/containerdのAppArmorプロファイル不具合により、同一コンテナ内の
+            # PostgreSQLプロセス間シグナルが拒否される環境向けの限定的な回避策。
+            # capability、seccomp、非root実行の制限は引き続き維持する。
+            appArmorProfile:
+              type: Unconfined
             allowPrivilegeEscalation: false
             capabilities:
               drop:
