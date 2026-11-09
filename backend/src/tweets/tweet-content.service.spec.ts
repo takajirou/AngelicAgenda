@@ -96,6 +96,7 @@ describe('TweetContentService', () => {
       body: '予約販売を開始しました',
       timestamp: 1_793_273_400,
       data: {
+        type: 'tweet',
         uri: 'https://twitter.com/i/web/status/20',
       },
     });
@@ -118,6 +119,7 @@ describe('TweetContentService', () => {
       title: '公式アカウント',
       body: 'ライブ先行受付を開始しました',
       data: {
+        type: 'tweet',
         uri: '/official/status/1234567890123456789',
       },
     });
@@ -138,6 +140,7 @@ describe('TweetContentService', () => {
       body: '受付中です',
       tag: 'tweet_21',
       data: {
+        type: 'tweet',
         uri: 'https://x.com/official/status/21',
         title: '  ',
         body: '',
@@ -181,6 +184,23 @@ describe('TweetContentService', () => {
     },
   );
 
+  it('ignores a non-tweet notification even when it references a post', async () => {
+    await expect(
+      service.ingest(userId, {
+        title: '公式',
+        body: '本文',
+        data: {
+          type: 'mention',
+          uri: 'https://x.com/official/status/123',
+        },
+      }),
+    ).resolves.toEqual({
+      status: 'ignored',
+      reason: 'not_a_tweet_notification',
+    });
+    expect(repository.save).not.toHaveBeenCalled();
+  });
+
   it('returns the stored row when the notification is a duplicate', async () => {
     repository.save.mockImplementationOnce(async (_userId, tweet) => ({
       duplicate: true,
@@ -190,7 +210,7 @@ describe('TweetContentService', () => {
     const result = await service.ingest(userId, {
       title: '公式',
       body: '再送された本文',
-      data: { uri: 'https://x.com/official/status/123' },
+      data: { type: 'tweet', uri: 'https://x.com/official/status/123' },
     });
 
     expect(result).toMatchObject({
@@ -206,7 +226,7 @@ describe('TweetContentService', () => {
     const result = await service.ingest(userId, {
       title: '公式',
       body: '受付中です',
-      data: { uri: 'https://x.com/official/status/456' },
+      data: { type: 'tweet', uri: 'https://x.com/official/status/456' },
     });
 
     expect(result).toMatchObject({

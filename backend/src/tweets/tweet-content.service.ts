@@ -35,6 +35,15 @@ export class TweetContentService {
     userId: string,
     payload: XNotificationWebhookDto,
   ): Promise<TweetIngestionResult> {
+    const notificationType = this.nonEmpty(payload.data?.type);
+
+    if (notificationType !== 'tweet') {
+      return {
+        status: 'ignored',
+        reason: 'not_a_tweet_notification',
+      };
+    }
+
     const text =
       this.nonEmpty(payload.data?.body) ?? this.nonEmpty(payload.body);
     const authorDisplayName =
@@ -56,7 +65,7 @@ export class TweetContentService {
       authorHandle: reference.authorHandle,
       profileImageUrl: null,
       originalUrl: `https://x.com/i/web/status/${reference.tweetId}`,
-      notificationType: this.nonEmpty(payload.data?.type) ?? null,
+      notificationType,
       sourceTag:
         this.nonEmpty(payload.data?.tag) ?? this.nonEmpty(payload.tag) ?? null,
       notifiedAt: this.parseTimestamp(payload.timestamp),
