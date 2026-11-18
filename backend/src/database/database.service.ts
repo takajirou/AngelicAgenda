@@ -107,6 +107,16 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       ON user_tweet_contents (user_id, received_at DESC, tweet_id DESC)
     `);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS user_tweet_filter_settings (
+        user_id uuid PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
+        filtering_enabled boolean NOT NULL DEFAULT false,
+        categories varchar(32)[] NOT NULL,
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        CHECK (cardinality(categories) BETWEEN 1 AND 2),
+        CHECK (categories <@ ARRAY['live_ticket', 'goods']::varchar[])
+      )
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS x_user_profiles (
         x_user_id varchar(32) PRIMARY KEY,
         username varchar(15) NOT NULL,

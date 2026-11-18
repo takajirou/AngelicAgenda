@@ -6,7 +6,10 @@ import {
 import { Test, type TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
-import { AppAuthGuard, type AuthenticatedRequest } from '../src/auth/app-auth.guard.js';
+import {
+  AppAuthGuard,
+  type AuthenticatedRequest,
+} from '../src/auth/app-auth.guard.js';
 import { AuthService } from '../src/auth/auth.service.js';
 import { DatabaseService } from '../src/database/database.service.js';
 import { AngelicAngelService } from '../src/integrations/angelic-angel/angelic-angel.service.js';
@@ -14,6 +17,7 @@ import { AppModule } from '../src/app.module.js';
 import type { TweetContent } from '../src/tweets/tweet-content.model.js';
 import { TweetContentRepository } from '../src/tweets/tweet-content.repository.js';
 import { XProfileService } from '../src/x-profiles/x-profile.service.js';
+import { TweetFilterSettingsRepository } from '../src/tweet-filters/tweet-filter-settings.repository.js';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
@@ -28,6 +32,8 @@ describe('AppController (e2e)', () => {
   const saveTweet = vi.fn();
   const findLatestTweets = vi.fn();
   const getXProfile = vi.fn();
+  const findFilterSettings = vi.fn();
+  const saveFilterSettings = vi.fn();
   const authSession = {
     token: authToken,
     expiresAt: '2026-12-01T00:00:00.000Z',
@@ -49,7 +55,9 @@ describe('AppController (e2e)', () => {
       })
       .overrideGuard(AppAuthGuard)
       .useValue({
-        canActivate: (context: { switchToHttp: () => { getRequest: () => AuthenticatedRequest } }) => {
+        canActivate: (context: {
+          switchToHttp: () => { getRequest: () => AuthenticatedRequest };
+        }) => {
           const incoming = context.switchToHttp().getRequest();
           if (incoming.header('authorization') !== `Bearer ${authToken}`) {
             throw new UnauthorizedException();
@@ -70,21 +78,33 @@ describe('AppController (e2e)', () => {
       .useValue({ save: saveTweet, findLatest: findLatestTweets })
       .overrideProvider(XProfileService)
       .useValue({ getByUsername: getXProfile })
+      .overrideProvider(TweetFilterSettingsRepository)
+      .useValue({ find: findFilterSettings, save: saveFilterSettings })
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     provision.mockReset();
     disconnect.mockReset();
     verifyWebhookRoute.mockReset();
     saveTweet.mockReset();
     findLatestTweets.mockReset();
     getXProfile.mockReset();
-    saveTweet.mockImplementation(async (_userId: string, tweet: TweetContent) => ({
-      duplicate: false,
-      tweet,
-    }));
+    findFilterSettings.mockReset();
+    saveFilterSettings.mockReset();
+    saveTweet.mockImplementation(
+      async (_userId: string, tweet: TweetContent) => ({
+        duplicate: false,
+        tweet,
+      }),
+    );
     findLatestTweets.mockResolvedValue([]);
+    findFilterSettings.mockResolvedValue(null);
+    saveFilterSettings.mockImplementation(
+      async (_userId, settings) => settings,
+    );
     getXProfile.mockResolvedValue({
       status: 'cached',
       profile: {
@@ -100,7 +120,10 @@ describe('AppController (e2e)', () => {
   });
 
   it('/health (GET)', () =>
-    request(app.getHttpServer()).get('/health').expect(200).expect({ status: 'ok' }));
+    request(app.getHttpServer())
+      .get('/health')
+      .expect(200)
+      .expect({ status: 'ok' }));
 
   it('/auth/register creates an app session', () =>
     request(app.getHttpServer())
@@ -189,6 +212,36 @@ describe('AppController (e2e)', () => {
     expect(verifyWebhookRoute).toHaveBeenCalledWith(user.id, signature);
     expect(saveTweet).not.toHaveBeenCalled();
   });
+
+  it('/tweet-filter-settings returns defaults and saves user preferences', async () => {
+    await request(app.getHttpServer())
+      .get('/tweet-filter-settings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(200)
+      .expect({
+        filteringEnabled: false,
+        categories: ['live_ticket', 'goods'],
+      });
+
+    await request(app.getHttpServer())
+      .put('/tweet-filter-settings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ filteringEnabled: true, categories: ['goods'] })
+      .expect(200)
+      .expect({ filteringEnabled: true, categories: ['goods'] });
+
+    expect(saveFilterSettings).toHaveBeenCalledWith(user.id, {
+      filteringEnabled: true,
+      categories: ['goods'],
+    });
+  });
+
+  it('/tweet-filter-settings rejects unsupported categories', () =>
+    request(app.getHttpServer())
+      .put('/tweet-filter-settings')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ filteringEnabled: true, categories: ['sports'] })
+      .expect(400));
 
   it('/tweets returns only the current user content', async () => {
     findLatestTweets.mockResolvedValueOnce([

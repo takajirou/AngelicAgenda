@@ -22,6 +22,11 @@ import { XApiClientService } from './integrations/x-api/x-api-client.service.js'
 import { XProfileService } from './x-profiles/x-profile.service.js';
 import { XProfileRepository } from './x-profiles/x-profile.repository.js';
 import { PostgresXProfileRepository } from './x-profiles/postgres-x-profile.repository.js';
+import { PostgresTweetFilterSettingsRepository } from './tweet-filters/postgres-tweet-filter-settings.repository.js';
+import { TweetClassifierService } from './tweet-filters/tweet-classifier.service.js';
+import { TweetFilterSettingsController } from './tweet-filters/tweet-filter-settings.controller.js';
+import { TweetFilterSettingsRepository } from './tweet-filters/tweet-filter-settings.repository.js';
+import { TweetFilterSettingsService } from './tweet-filters/tweet-filter-settings.service.js';
 
 @Module({
   imports: [],
@@ -31,6 +36,7 @@ import { PostgresXProfileRepository } from './x-profiles/postgres-x-profile.repo
     AngelicAngelController,
     XWebhookController,
     TweetContentController,
+    TweetFilterSettingsController,
   ],
   providers: [
     AppService,
@@ -43,6 +49,8 @@ import { PostgresXProfileRepository } from './x-profiles/postgres-x-profile.repo
     AngelicAngelService,
     WebhookLoopbackGuard,
     TweetContentService,
+    TweetClassifierService,
+    TweetFilterSettingsService,
     XApiClientService,
     XProfileService,
     {
@@ -56,6 +64,10 @@ import { PostgresXProfileRepository } from './x-profiles/postgres-x-profile.repo
     {
       provide: XProfileRepository,
       useClass: PostgresXProfileRepository,
+    },
+    {
+      provide: TweetFilterSettingsRepository,
+      useClass: PostgresTweetFilterSettingsRepository,
     },
   ],
 })
