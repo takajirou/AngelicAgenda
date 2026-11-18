@@ -2,32 +2,55 @@ diff --git a/src/error.rs b/src/error.rs
 index 6ba681a..54f7731 100644
 --- a/src/error.rs
 +++ b/src/error.rs
-@@ -17,6 +17,9 @@ pub enum AngelicAngelError {
+@@ -17,5 +17,8 @@ pub enum AngelicAngelError {
      #[error("decryption error: {0}")]
      Decryption(String),
- 
+-
++
 +    #[error("webhook error: {0}")]
 +    Webhook(String),
 +
      #[error("ECE error: {0}")]
      #[allow(dead_code)]
-     Ece(String),
 diff --git a/src/listener.rs b/src/listener.rs
-index 4e24b7f..e015bae 100644
+index 4e24b7f..bd83ae5 100644
 --- a/src/listener.rs
 +++ b/src/listener.rs
-@@ -246,7 +246,7 @@ async fn handle_notification_data(
+@@ -246,11 +246,28 @@ async fn handle_notification_data(
      let payload: serde_json::Value =
          serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({ "raw": text }));
- 
+-
 -    tracing::info!(payload = %payload, "notification decrypted");
+-
++
 +    tracing::info!("notification decrypted");
- 
++
++    if !is_tweet_notification(&payload) {
++        tracing::debug!("non-tweet notification ignored");
++        return Ok(());
++    }
++
      send_to_webhook(&payload).await?;
- 
-@@ -264,11 +264,10 @@ async fn send_to_webhook(payload: &serde_json::Value) -> Result<()> {
-     let response = client.post(&webhook_url).json(payload).send().await?;
- 
+-
++
+     Ok(())
+ }
+-
++
++/// Returns whether the decrypted X Web Push payload represents a tweet.
++///
++/// Filtering here prevents unrelated notifications from leaving the listener
++/// process. The webhook repeats this validation as a trust-boundary check.
++fn is_tweet_notification(payload: &serde_json::Value) -> bool {
++    payload
++        .get("data")
++        .and_then(|data| data.get("type"))
++        .and_then(serde_json::Value::as_str)
++        == Some("tweet")
++}
++
+ /// Sends the decrypted notification payload to the configured webhook endpoint via HTTP POST.
+@@ -265,9 +282,8 @@ async fn send_to_webhook(payload: &serde_json::Value) -> Result<()> {
      if !response.status().is_success() {
          let status = response.status();
 -        let error_text = response
@@ -41,4 +64,30 @@ index 4e24b7f..e015bae 100644
 +        )));
      } else {
          tracing::info!(status = %response.status(), "webhook request succeeded");
-     }
+@@ -382,1 +398,26 @@ fn parse_header_param(header_value: Option<&String>, param_name: &str) -> Result
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::is_tweet_notification;
++    use serde_json::json;
++
++    #[test]
++    fn identifies_tweet_notifications() {
++        assert!(is_tweet_notification(&json!({
++            "data": { "type": "tweet" }
++        })));
++    }
++
++    #[test]
++    fn rejects_notifications_other_than_tweets() {
++        for payload in [
++            json!({ "data": { "type": "mention" } }),
++            json!({ "data": {} }),
++            json!({ "data": { "type": 123 } }),
++            json!({ "type": "tweet" }),
++        ] {
++            assert!(!is_tweet_notification(&payload));
++        }
++    }
++}

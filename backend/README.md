@@ -29,7 +29,7 @@ NestJS、PostgreSQL、Angelic-Angelを組み合わせたマルチユーザーAPI
 
 1. `POST /auth/register`または`POST /auth/login`でアプリセッションを取得する
 2. Bearerトークン付きで`POST /integrations/angelic-angel/session`を呼び、本人のX Cookieを登録する
-3. Angelic-Angelが`POST /webhooks/x/{userId}/{signature}`へ通知を転送する
+3. Angelic-Angelが`data.type`が`tweet`の通知だけを`POST /webhooks/x/{userId}/{signature}`へ転送する
 4. `GET /tweets?limit=50`で本人の保存ポストだけを取得する
 5. `DELETE /integrations/angelic-angel/session`でX連携を解除する
 6. `DELETE /auth/account`でアカウントと関連データを削除する
@@ -63,3 +63,5 @@ docker compose stop pgweb
 ```
 
 Dockerイメージは[sh1ma/Angelic-Angel](https://github.com/sh1ma/Angelic-Angel)を固定コミットからビルドします。ライセンス本文はイメージ内の`/usr/share/doc/angelic-angel/LICENSE`へ含めています。
+
+X Web Pushのうち、ツイート以外（メンションなど）の通知はAngelic-Angel内で破棄します。受信境界での防御として、Webhook側でも`data.type === "tweet"`を再検証し、条件を満たさないデータは保存しません。
