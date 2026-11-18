@@ -8,6 +8,8 @@ import {
 } from './tweet-content.model.js';
 import { TweetContentRepository } from './tweet-content.repository.js';
 import { XProfileService } from '../x-profiles/x-profile.service.js';
+import { TweetClassifierService } from '../tweet-filters/tweet-classifier.service.js';
+import { TweetFilterSettingsService } from '../tweet-filters/tweet-filter-settings.service.js';
 
 const allowedXHosts = new Set([
   'x.com',
@@ -29,6 +31,8 @@ export class TweetContentService {
   constructor(
     private readonly repository: TweetContentRepository,
     private readonly xProfileService: XProfileService,
+    private readonly classifier: TweetClassifierService,
+    private readonly filterSettings: TweetFilterSettingsService,
   ) {}
 
   async ingest(
@@ -56,6 +60,20 @@ export class TweetContentService {
         `Ignored X notification (text=${String(Boolean(text))}, title=${String(Boolean(authorDisplayName))}, uri=${String(Boolean(uri))}, tweetReference=${String(Boolean(reference))})`,
       );
       return { status: 'ignored', reason: 'not_a_tweet_notification' };
+    }
+
+    const settings = await this.filterSettings.findConfigured(userId);
+    if (settings?.filteringEnabled) {
+      const matchedCategories = this.classifier.classify(
+        `${authorDisplayName}\n${text}`,
+      );
+      const isSelected = matchedCategories.some((category) =>
+        settings.categories.includes(category),
+      );
+      if (!isSelected) {
+        this.logger.debug('X notification excluded by user filter settings');
+        return { status: 'ignored', reason: 'filtered_by_preferences' };
+      }
     }
 
     const tweet: TweetContent = {
@@ -94,9 +112,24 @@ export class TweetContentService {
     };
   }
 
-  async findLatest(userId: string, limit: number): Promise<StoredTweetContent[]> {
-    const tweets = await this.repository.findLatest(userId, limit);
-    return tweets.map((tweet) => serializeTweetContent(tweet));
+  async findLatest(
+    userId: string,
+    limit: number,
+  ): Promise<StoredTweetContent[]> {
+    const settings = await this.filterSettings.findConfigured(userId);
+    const repositoryLimit = settings?.filteringEnabled ? 100 : limit;
+    const tweets = await this.repository.findLatest(userId, repositoryLimit);
+    const filteredTweets = settings?.filteringEnabled
+      ? tweets.filter((tweet) => {
+          const categories = this.classifier.classify(
+            `${tweet.authorDisplayName}\n${tweet.text}`,
+          );
+          return categories.some((category) =>
+            settings.categories.includes(category),
+          );
+        })
+      : tweets;
+    return filteredTweets.slice(0, limit).map(serializeTweetContent);
   }
 
   private nonEmpty(value: string | undefined): string | undefined {

@@ -31,8 +31,9 @@ NestJS、PostgreSQL、Angelic-Angelを組み合わせたマルチユーザーAPI
 2. Bearerトークン付きで`POST /integrations/angelic-angel/session`を呼び、本人のX Cookieを登録する
 3. Angelic-Angelが`data.type`が`tweet`の通知だけを`POST /webhooks/x/{userId}/{signature}`へ転送する
 4. `GET /tweets?limit=50`で本人の保存ポストだけを取得する
-5. `DELETE /integrations/angelic-angel/session`でX連携を解除する
-6. `DELETE /auth/account`でアカウントと関連データを削除する
+5. `PUT /tweet-filter-settings`でライブチケットやグッズ告知の絞り込みを設定する
+6. `DELETE /integrations/angelic-angel/session`でX連携を解除する
+7. `DELETE /auth/account`でアカウントと関連データを削除する
 
 詳細な入出力は[`openapi.yaml`](./openapi.yaml)を参照してください。
 
@@ -65,3 +66,9 @@ docker compose stop pgweb
 Dockerイメージは[sh1ma/Angelic-Angel](https://github.com/sh1ma/Angelic-Angel)を固定コミットからビルドします。ライセンス本文はイメージ内の`/usr/share/doc/angelic-angel/LICENSE`へ含めています。
 
 X Web Pushのうち、ツイート以外（メンションなど）の通知はAngelic-Angel内で破棄します。受信境界での防御として、Webhook側でも`data.type === "tweet"`を再検証し、条件を満たさないデータは保存しません。
+
+## ツイートの絞り込み
+
+ユーザーは`live_ticket`（ライブチケット）と`goods`（グッズ告知）を選択できます。絞り込みを有効にすると、本文と発信元名を正規化し、カテゴリごとの「対象語」と「申込・販売などの行動語」が両方含まれるツイートだけを保存します。設定がない場合と絞り込みが無効な場合は、従来どおりすべてのツイートを保存します。
+
+分類規則は`TweetClassifierService`へ分離しており、誤判定の事例を単体テストへ追加しながら改善できます。外部AIへ本文を送信しないため、MVPでは通信障害や外部サービスへのデータ送信は発生しません。

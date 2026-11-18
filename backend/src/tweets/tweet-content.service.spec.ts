@@ -4,6 +4,8 @@ import { XProfileService } from '../x-profiles/x-profile.service.js';
 import type { TweetContent } from './tweet-content.model.js';
 import { TweetContentRepository } from './tweet-content.repository.js';
 import { TweetContentService } from './tweet-content.service.js';
+import { TweetClassifierService } from '../tweet-filters/tweet-classifier.service.js';
+import { TweetFilterSettingsService } from '../tweet-filters/tweet-filter-settings.service.js';
 
 class FakeTweetContentRepository extends TweetContentRepository {
   readonly save = vi.fn(
@@ -30,6 +32,7 @@ describe('TweetContentService', () => {
   };
   let repository: FakeTweetContentRepository;
   let getProfileByUsername: ReturnType<typeof vi.fn>;
+  let findFilterSettings: ReturnType<typeof vi.fn>;
   let service: TweetContentService;
 
   beforeEach(() => {
@@ -38,9 +41,17 @@ describe('TweetContentService', () => {
       status: 'cached',
       profile,
     });
-    service = new TweetContentService(repository, {
-      getByUsername: getProfileByUsername,
-    } as unknown as XProfileService);
+    findFilterSettings = vi.fn().mockResolvedValue(null);
+    service = new TweetContentService(
+      repository,
+      {
+        getByUsername: getProfileByUsername,
+      } as unknown as XProfileService,
+      new TweetClassifierService(),
+      {
+        findConfigured: findFilterSettings,
+      } as unknown as TweetFilterSettingsService,
+    );
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-10-29T12:00:00.000Z'));
   });
@@ -201,6 +212,42 @@ describe('TweetContentService', () => {
     expect(repository.save).not.toHaveBeenCalled();
   });
 
+  it('stores a tweet that matches the selected category', async () => {
+    findFilterSettings.mockResolvedValueOnce({
+      filteringEnabled: true,
+      categories: ['live_ticket'],
+    });
+
+    await expect(
+      service.ingest(userId, {
+        title: '公式',
+        body: 'ライブチケットの先行抽選受付を開始しました',
+        data: { type: 'tweet', uri: 'https://x.com/official/status/124' },
+      }),
+    ).resolves.toMatchObject({ status: 'accepted' });
+    expect(repository.save).toHaveBeenCalledOnce();
+  });
+
+  it('ignores a tweet that does not match the selected category', async () => {
+    findFilterSettings.mockResolvedValueOnce({
+      filteringEnabled: true,
+      categories: ['goods'],
+    });
+
+    await expect(
+      service.ingest(userId, {
+        title: '公式',
+        body: 'ライブチケットの先行抽選受付を開始しました',
+        data: { type: 'tweet', uri: 'https://x.com/official/status/125' },
+      }),
+    ).resolves.toEqual({
+      status: 'ignored',
+      reason: 'filtered_by_preferences',
+    });
+    expect(repository.save).not.toHaveBeenCalled();
+    expect(getProfileByUsername).not.toHaveBeenCalled();
+  });
+
   it('returns the stored row when the notification is a duplicate', async () => {
     repository.save.mockImplementationOnce(async (_userId, tweet) => ({
       duplicate: true,
@@ -264,5 +311,43 @@ describe('TweetContentService', () => {
       }),
     ]);
     expect(repository.findLatest).toHaveBeenCalledWith(userId, 10);
+  });
+
+  it('filters previously saved tweets when listing with preferences enabled', async () => {
+    findFilterSettings.mockResolvedValueOnce({
+      filteringEnabled: true,
+      categories: ['goods'],
+    });
+    repository.findLatest.mockResolvedValueOnce([
+      {
+        tweetId: '1',
+        text: 'ライブチケットの先行受付を開始します',
+        authorDisplayName: '公式',
+        authorHandle: 'official',
+        profileImageUrl: null,
+        originalUrl: 'https://x.com/i/web/status/1',
+        notificationType: 'tweet',
+        sourceTag: null,
+        notifiedAt: null,
+        receivedAt: new Date('2026-10-29T10:00:00.000Z'),
+      },
+      {
+        tweetId: '2',
+        text: '新作グッズの予約販売を開始します',
+        authorDisplayName: '公式',
+        authorHandle: 'official',
+        profileImageUrl: null,
+        originalUrl: 'https://x.com/i/web/status/2',
+        notificationType: 'tweet',
+        sourceTag: null,
+        notifiedAt: null,
+        receivedAt: new Date('2026-10-29T11:00:00.000Z'),
+      },
+    ]);
+
+    await expect(service.findLatest(userId, 10)).resolves.toEqual([
+      expect.objectContaining({ tweetId: '2' }),
+    ]);
+    expect(repository.findLatest).toHaveBeenCalledWith(userId, 100);
   });
 });

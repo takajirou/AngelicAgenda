@@ -5,6 +5,7 @@ struct TweetListView: View {
     @ObservedObject var viewModel: TweetListViewModel
     let session: AppSession
     @State private var pendingDestructiveAction: DestructiveAction?
+    @State private var isFilterSettingsPresented = false
 
     var body: some View {
         NavigationStack {
@@ -44,6 +45,14 @@ struct TweetListView: View {
             .navigationTitle("告知")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isFilterSettingsPresented = true
+                    } label: {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                    }
+                    .accessibilityLabel("告知の絞り込み")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Text(session.user.email)
                         Button("X連携を解除", role: .destructive) {
@@ -62,6 +71,11 @@ struct TweetListView: View {
                         Image(systemName: "person.crop.circle")
                             .accessibilityLabel("アカウント")
                     }
+                }
+            }
+            .sheet(isPresented: $isFilterSettingsPresented) {
+                TweetFilterSettingsView(session: session) {
+                    Task { await load() }
                 }
             }
             .task(id: session.token) {

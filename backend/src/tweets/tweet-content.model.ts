@@ -27,7 +27,7 @@ export type TweetIngestionResult =
     }
   | {
       status: 'ignored';
-      reason: 'not_a_tweet_notification';
+      reason: 'not_a_tweet_notification' | 'filtered_by_preferences';
     };
 
 export function serializeTweetContent(tweet: TweetContent): StoredTweetContent {
